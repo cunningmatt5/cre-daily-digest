@@ -1,8 +1,12 @@
 import feedparser
+import re
 import requests
 from bs4 import BeautifulSoup
 from datetime import datetime
 from urllib.parse import urljoin
+
+# Matches /YYYY/MM/DD/ in a URL path (e.g. globest.com/2026/05/01/article-title)
+_URL_DATE_RE = re.compile(r"/(\d{4})/(\d{2})/(\d{2})/")
 
 from .config import MAX_ARTICLES_PER_SOURCE, SUMMARY_MAX_CHARS
 
@@ -62,6 +66,18 @@ def _parse_html_date(tag):
     return tag.get_text(strip=True)[:20], None
 
 
+def _date_from_url(url: str):
+    """Extract a date from a URL path like /2026/05/01/ as a fallback."""
+    m = _URL_DATE_RE.search(url)
+    if m:
+        try:
+            dt = datetime(int(m.group(1)), int(m.group(2)), int(m.group(3)))
+            return dt.strftime("%b %d, %Y"), dt
+        except ValueError:
+            pass
+    return "", None
+
+
 def _make_article(title, link, snippet, pub_date, pub_datetime, source, position):
     return {
         "title": title.strip(),
@@ -94,6 +110,8 @@ def fetch_rss(source):
         if raw_summary:
             raw_summary = BeautifulSoup(raw_summary, "lxml").get_text(" ", strip=True)
         pub_date, pub_datetime = _parse_rss_date(entry)
+        if not pub_datetime:
+            pub_date, pub_datetime = _date_from_url(link)
         articles.append(_make_article(title, link, raw_summary, pub_date, pub_datetime, source, i))
 
     return articles
@@ -157,6 +175,8 @@ def scrape_headlines(source):
         if not snippet:
             meta = soup.find("meta", attrs={"name": "description"})
             snippet = meta.get("content", "") if meta else ""
+        if not pub_datetime:
+            pub_date, pub_datetime = _date_from_url(link)
         articles.append(_make_article(title, link, snippet, pub_date, pub_datetime, source, i))
 
     return articles

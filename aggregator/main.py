@@ -73,8 +73,19 @@ def _non_article_reason(article) -> str:
     path = parsed.path.rstrip("/")
     segments = [s for s in path.split("/") if s]
 
-    if len(segments) <= 1:
-        return f"single-segment path ({path or '/'})"
+    if len(segments) == 0:
+        return "bare domain"
+
+    if len(segments) == 1:
+        slug = segments[0].lower()
+        # Known generic category names are always filtered
+        if slug in _NON_ARTICLE_ENDINGS:
+            return f"category path ({slug})"
+        # Short slugs with few hyphens are likely category pages, not articles
+        # Long hyphenated slugs (e.g. lodgingmagazine.com/choice-hotels-q1-results)
+        # are article URLs and should pass through
+        if len(slug) < 25 and slug.count("-") < 3:
+            return f"short non-slug path ({slug})"
 
     last = segments[-1].lower()
     if last in _NON_ARTICLE_ENDINGS:
