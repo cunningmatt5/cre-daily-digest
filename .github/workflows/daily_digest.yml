@@ -5,6 +5,9 @@ on:
     - cron: '0 12 * * *'   # 7:00 AM EST / 8:00 AM EDT
   workflow_dispatch:         # Manual trigger via GitHub Actions UI
 
+permissions:
+  contents: write            # Required to commit seen_urls.json back to repo
+
 jobs:
   send-digest:
     runs-on: ubuntu-latest
@@ -12,6 +15,8 @@ jobs:
     steps:
       - name: Checkout repo
         uses: actions/checkout@v4
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Set up Python
         uses: actions/setup-python@v5
@@ -27,3 +32,11 @@ jobs:
           GMAIL_APP_PASSWORD: ${{ secrets.GMAIL_APP_PASSWORD }}
           RECIPIENT_EMAIL: ${{ secrets.RECIPIENT_EMAIL }}
         run: python -m aggregator.main
+
+      - name: Save seen URLs
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add data/seen_urls.json
+          git diff --staged --quiet || git commit -m "chore: update seen URLs [skip ci]"
+          git push

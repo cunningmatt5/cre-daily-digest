@@ -11,24 +11,42 @@ def _article_row(article, index):
     short = article["source_short"]
     num = str(index + 1).zfill(2)
 
+    paywall_badge = (
+        '<span style="display:inline-block;color:#92400e;background:#fef3c7;'
+        'border:1px solid #f59e0b;border-radius:2px;font-size:9px;'
+        f'font-family:{FONT};font-weight:700;text-transform:uppercase;'
+        'letter-spacing:0.8px;padding:1px 5px;margin-left:6px;'
+        'vertical-align:middle;">&#128274; Subscription</span>'
+        if article.get("paywalled") else ""
+    )
+
+    date_line = (
+        f'<span style="color:#9ca3af;font-size:11px;font-family:{FONT};">'
+        f'{article["pub_date"]}</span>'
+        if article.get("pub_date") else ""
+    )
+
     summary_html = (
-        f'<div style="margin-top:4px;color:#6b7280;font-size:12px;'
+        f'<div style="margin-top:3px;color:#6b7280;font-size:12px;'
         f'line-height:1.5;font-family:{FONT};">{summary}</div>'
         if summary else ""
     )
 
     return f"""<tr>
-      <td style="width:28px;padding:14px 10px 14px 0;vertical-align:top;border-bottom:1px solid #e5e7eb;">
+      <td style="width:28px;padding:13px 10px 13px 0;vertical-align:top;border-bottom:1px solid #e5e7eb;">
         <span style="color:#c0c8d8;font-size:11px;font-weight:700;font-family:{FONT};">{num}</span>
       </td>
-      <td style="padding:14px 0;vertical-align:top;border-bottom:1px solid #e5e7eb;">
-        <span style="display:inline-block;background:{color};color:#ffffff;padding:2px 7px;
-          border-radius:2px;font-size:9px;font-family:{FONT};text-transform:uppercase;
-          letter-spacing:1px;font-weight:700;margin-bottom:5px;">{short}</span>
-        <div style="margin:0;">
+      <td style="padding:13px 0;vertical-align:top;border-bottom:1px solid #e5e7eb;">
+        <div style="margin-bottom:5px;">
+          <span style="display:inline-block;background:{color};color:#ffffff;padding:2px 7px;
+            border-radius:2px;font-size:9px;font-family:{FONT};text-transform:uppercase;
+            letter-spacing:1px;font-weight:700;">{short}</span>{paywall_badge}
+        </div>
+        <div>
           <a href="{link}" style="color:#1a1f36;text-decoration:none;font-size:13.5px;
             font-weight:700;line-height:1.4;font-family:{FONT};">{title}</a>
         </div>
+        {f'<div style="margin-top:3px;">{date_line}</div>' if date_line else ""}
         {summary_html}
       </td>
     </tr>"""
@@ -57,8 +75,7 @@ def build_html_email(articles, today):
 
           <!-- Header -->
           <tr>
-            <td style="background:#0d1b3e;border-radius:6px 6px 0 0;
-              padding:20px 32px 18px;">
+            <td style="background:#0d1b3e;border-radius:6px 6px 0 0;padding:20px 32px 18px;">
               <table width="100%" cellpadding="0" cellspacing="0" border="0">
                 <tr>
                   <td>

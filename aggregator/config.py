@@ -15,6 +15,7 @@ SOURCES = [
         "method": "scrape",
         "tier_weight": 30,
         "color": NAVY,
+        "paywalled": True,
     },
     {
         "name": "CoStar",
@@ -23,6 +24,7 @@ SOURCES = [
         "method": "scrape",
         "tier_weight": 30,
         "color": NAVY,
+        "paywalled": True,
     },
     {
         "name": "Bloomberg Real Estate",
@@ -31,6 +33,7 @@ SOURCES = [
         "method": "rss",
         "tier_weight": 28,
         "color": NAVY,
+        "paywalled": True,
     },
     {
         "name": "Green Street",
@@ -39,6 +42,7 @@ SOURCES = [
         "method": "scrape",
         "tier_weight": 28,
         "color": NAVY,
+        "paywalled": True,
     },
     {
         "name": "CBRE Research",
@@ -104,6 +108,7 @@ SOURCES = [
         "method": "scrape",
         "tier_weight": 16,
         "color": ROYAL,
+        "paywalled": True,
     },
     {
         "name": "National Real Estate Investor",
