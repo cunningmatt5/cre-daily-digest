@@ -11,8 +11,9 @@ SOURCES = [
     {
         "name": "Wall Street Journal",
         "short": "WSJ",
-        "url": "https://www.wsj.com/real-estate/commercial-real-estate",
-        "method": "scrape",
+        # Official Dow Jones RSS — confirmed working (35 items)
+        "url": "https://feeds.content.dowjones.io/public/rss/latestnewsrealestate",
+        "method": "rss",
         "tier_weight": 30,
         "color": NAVY,
         "paywalled": True,
@@ -20,6 +21,7 @@ SOURCES = [
     {
         "name": "CoStar",
         "short": "CoStar",
+        # Login-walled; scrape returns 0 — kept for reference
         "url": "https://www.costar.com/news",
         "method": "scrape",
         "tier_weight": 30,
@@ -29,7 +31,8 @@ SOURCES = [
     {
         "name": "Bloomberg Real Estate",
         "short": "Bloomberg",
-        "url": "https://feeds.bloomberg.com/real-estate/news.rss",
+        # Bloomberg disabled native RSS; Google News RSS surfaces bloomberg.com CRE articles
+        "url": "https://news.google.com/rss/search?q=site:bloomberg.com+%22commercial+real+estate%22&hl=en-US&gl=US&ceid=US:en",
         "method": "rss",
         "tier_weight": 28,
         "color": NAVY,
@@ -38,6 +41,7 @@ SOURCES = [
     {
         "name": "Green Street",
         "short": "Green St",
+        # Fully paywalled — scrape returns 0; kept for reference
         "url": "https://www.greenstreetnews.com/articles",
         "method": "scrape",
         "tier_weight": 28,
@@ -64,8 +68,9 @@ SOURCES = [
     {
         "name": "GlobeStreet",
         "short": "GlobeSt",
-        "url": "https://www.globest.com/rss/",
-        "method": "rss",
+        # RSS returns 403; scrape homepage instead
+        "url": "https://www.globest.com/",
+        "method": "scrape",
         "tier_weight": 20,
         "color": ROYAL,
     },
@@ -88,7 +93,8 @@ SOURCES = [
     {
         "name": "The Real Deal",
         "short": "Real Deal",
-        "url": "https://therealdeal.com/feed/",
+        # National feed confirmed working (10 items)
+        "url": "https://therealdeal.com/national/feed/",
         "method": "rss",
         "tier_weight": 18,
         "color": ROYAL,
@@ -113,16 +119,18 @@ SOURCES = [
     {
         "name": "National Real Estate Investor",
         "short": "NREI",
-        "url": "https://www.nreionline.com/rss/all",
-        "method": "rss",
+        # RSS URL was dead; scrape nreionline.com directly
+        "url": "https://www.nreionline.com/",
+        "method": "scrape",
         "tier_weight": 16,
         "color": ROYAL,
     },
     {
         "name": "Urban Land Institute",
         "short": "ULI",
-        "url": "https://urbanland.uli.org/feed/",
-        "method": "rss",
+        # urbanland.uli.org 403'd; try main ULI news page
+        "url": "https://uli.org/news/",
+        "method": "scrape",
         "tier_weight": 15,
         "color": ROYAL,
     },
@@ -138,8 +146,9 @@ SOURCES = [
     {
         "name": "Multi-Housing News",
         "short": "MHN",
-        "url": "https://www.multihousingnews.com/feed/",
-        "method": "rss",
+        # RSS returns 403; scrape homepage instead
+        "url": "https://www.multihousingnews.com/",
+        "method": "scrape",
         "tier_weight": 12,
         "color": GREEN,
     },
@@ -152,9 +161,10 @@ SOURCES = [
         "color": GREEN,
     },
     {
-        "name": "Hotel News Now",
-        "short": "HNN",
-        "url": "https://www.hotelnewsnow.com/RSS/ALLNEWS",
+        "name": "Lodging Magazine",
+        "short": "Lodging",
+        # Replaces Hotel News Now (absorbed by CoStar in 2021)
+        "url": "https://lodgingmagazine.com/feed/",
         "method": "rss",
         "tier_weight": 10,
         "color": GREEN,
