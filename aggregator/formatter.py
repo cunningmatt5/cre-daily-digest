@@ -1,27 +1,45 @@
 from datetime import datetime, timezone
 
+FONT = "Arial, Helvetica, sans-serif"
 
-def _article_row(article):
+
+def _article_row(article, index):
     color = article["source_color"]
     title = article["title"].replace("<", "&lt;").replace(">", "&gt;")
     summary = article["summary"].replace("<", "&lt;").replace(">", "&gt;") if article["summary"] else ""
     link = article["link"]
     short = article["source_short"]
+    num = str(index + 1).zfill(2)
+
+    summary_html = (
+        f'<div style="margin-top:4px;color:#6b7280;font-size:12px;'
+        f'line-height:1.5;font-family:{FONT};">{summary}</div>'
+        if summary else ""
+    )
 
     return f"""<tr>
-      <td style="padding:12px 0;border-bottom:1px solid #e2e5ec;vertical-align:top;">
-        <span style="display:inline-block;background:{color};color:#ffffff;padding:2px 8px;border-radius:3px;font-size:9px;font-family:Arial,Helvetica,sans-serif;text-transform:uppercase;letter-spacing:0.9px;font-weight:700;margin-bottom:6px;">{short}</span><br>
-        <a href="{link}" style="color:#0d1b3e;text-decoration:none;font-size:14px;font-weight:700;line-height:1.35;font-family:Arial,Helvetica,sans-serif;">{title}</a>
-        {"<br><span style='color:#5a6070;font-size:12px;line-height:1.45;font-family:Arial,Helvetica,sans-serif;font-style:italic;'>" + summary + "</span>" if summary else ""}
+      <td style="width:28px;padding:14px 10px 14px 0;vertical-align:top;border-bottom:1px solid #e5e7eb;">
+        <span style="color:#c0c8d8;font-size:11px;font-weight:700;font-family:{FONT};">{num}</span>
+      </td>
+      <td style="padding:14px 0;vertical-align:top;border-bottom:1px solid #e5e7eb;">
+        <span style="display:inline-block;background:{color};color:#ffffff;padding:2px 7px;
+          border-radius:2px;font-size:9px;font-family:{FONT};text-transform:uppercase;
+          letter-spacing:1px;font-weight:700;margin-bottom:5px;">{short}</span>
+        <div style="margin:0;">
+          <a href="{link}" style="color:#1a1f36;text-decoration:none;font-size:13.5px;
+            font-weight:700;line-height:1.4;font-family:{FONT};">{title}</a>
+        </div>
+        {summary_html}
       </td>
     </tr>"""
 
 
 def build_html_email(articles, today):
     date_str = today.strftime("%B %d, %Y")
+    dow = today.strftime("%A")
     timestamp = datetime.now(timezone.utc).strftime("%I:%M %p UTC")
     count = len(articles)
-    rows = "".join(_article_row(a) for a in articles)
+    rows = "".join(_article_row(a, i) for i, a in enumerate(articles))
 
     return f"""<!DOCTYPE html>
 <html lang="en">
@@ -30,47 +48,75 @@ def build_html_email(articles, today):
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>CRE Daily Digest — {date_str}</title>
 </head>
-<body style="margin:0;padding:16px;background-color:#eef1f7;font-family:Arial,Helvetica,sans-serif;">
+<body style="margin:0;padding:20px 12px;background-color:#f1f3f8;font-family:{FONT};">
   <table width="100%" cellpadding="0" cellspacing="0" border="0">
     <tr>
       <td align="center">
-        <table width="860" cellpadding="0" cellspacing="0" border="0" style="max-width:860px;width:100%;">
+        <table cellpadding="0" cellspacing="0" border="0"
+          style="width:100%;max-width:860px;">
 
           <!-- Header -->
           <tr>
-            <td style="background:#0d1b3e;border-radius:6px 6px 0 0;padding:18px 36px;">
+            <td style="background:#0d1b3e;border-radius:6px 6px 0 0;
+              padding:20px 32px 18px;">
               <table width="100%" cellpadding="0" cellspacing="0" border="0">
                 <tr>
                   <td>
-                    <span style="color:#7a9cc0;font-size:10px;text-transform:uppercase;letter-spacing:2px;">Commercial Real Estate</span><br>
-                    <span style="color:#ffffff;font-size:20px;font-weight:700;letter-spacing:0.3px;">Daily Digest</span>
+                    <div style="color:#7b9ec7;font-size:10px;font-family:{FONT};
+                      text-transform:uppercase;letter-spacing:2.5px;margin-bottom:4px;">
+                      Commercial Real Estate
+                    </div>
+                    <div style="color:#ffffff;font-size:22px;font-weight:700;
+                      font-family:{FONT};letter-spacing:0.2px;line-height:1;">
+                      Daily Digest
+                    </div>
                   </td>
-                  <td align="right" style="vertical-align:middle;">
-                    <span style="color:#a8bcd4;font-size:13px;">{date_str}</span>
+                  <td align="right" style="vertical-align:bottom;">
+                    <div style="color:#a8c0d8;font-size:13px;font-family:{FONT};">
+                      {dow}, {date_str}
+                    </div>
                   </td>
                 </tr>
               </table>
             </td>
           </tr>
 
-          <!-- Body -->
+          <!-- Subheader bar -->
           <tr>
-            <td style="background:#ffffff;padding:20px 36px 16px;">
+            <td style="background:#162444;padding:8px 32px;">
+              <span style="color:#7b9ec7;font-size:11px;font-family:{FONT};">
+                {count} articles &nbsp;·&nbsp; Ranked by deal size, named entities &amp; editorial prominence
+              </span>
+            </td>
+          </tr>
+
+          <!-- Article list -->
+          <tr>
+            <td style="background:#ffffff;padding:8px 32px 16px;">
               <table width="100%" cellpadding="0" cellspacing="0" border="0">
                 {rows}
-                <tr>
-                  <td style="padding-top:12px;">
-                    <span style="color:#aaaaaa;font-size:11px;">Top {count} articles · Ranked by source authority and editorial prominence</span>
-                  </td>
-                </tr>
               </table>
             </td>
           </tr>
 
           <!-- Footer -->
           <tr>
-            <td style="background:#dde1eb;border-radius:0 0 6px 6px;padding:12px 36px;text-align:center;">
-              <span style="color:#888888;font-size:11px;">CRE Daily Digest &nbsp;·&nbsp; Generated {timestamp}</span>
+            <td style="background:#f8f9fb;border-top:1px solid #e5e7eb;
+              border-radius:0 0 6px 6px;padding:12px 32px;">
+              <table width="100%" cellpadding="0" cellspacing="0" border="0">
+                <tr>
+                  <td>
+                    <span style="color:#9ca3af;font-size:11px;font-family:{FONT};">
+                      CRE Daily Digest
+                    </span>
+                  </td>
+                  <td align="right">
+                    <span style="color:#9ca3af;font-size:11px;font-family:{FONT};">
+                      Generated {timestamp}
+                    </span>
+                  </td>
+                </tr>
+              </table>
             </td>
           </tr>
 
