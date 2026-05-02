@@ -1,7 +1,8 @@
 import json
 import sys
-from datetime import date, timedelta
+from datetime import date, datetime, timedelta
 from pathlib import Path
+from urllib.parse import urlparse
 
 from .config import SOURCES
 from .feeds import fetch_rss, scrape_headlines
@@ -11,6 +12,36 @@ from .email_sender import send_gmail
 
 SEEN_FILE = Path(__file__).parent.parent / "data" / "seen_urls.json"
 KEEP_DAYS = 30
+MAX_AGE_DAYS = 2
+
+SOCIAL_DOMAINS = {
+    "linkedin.com", "www.linkedin.com",
+    "twitter.com", "www.twitter.com",
+    "x.com", "www.x.com",
+    "facebook.com", "www.facebook.com",
+    "instagram.com", "www.instagram.com",
+    "youtube.com", "www.youtube.com",
+    "tiktok.com", "www.tiktok.com",
+    "reddit.com", "www.reddit.com",
+    "pinterest.com", "www.pinterest.com",
+    "threads.net", "www.threads.net",
+}
+
+
+def _is_social(article) -> bool:
+    try:
+        domain = urlparse(article["link"]).netloc.lower()
+        return domain in SOCIAL_DOMAINS
+    except Exception:
+        return False
+
+
+def _is_too_old(article) -> bool:
+    dt = article.get("pub_datetime")
+    if dt is None:
+        return False  # no date available — keep it (scraped homepage content is inherently recent)
+    cutoff = datetime.utcnow() - timedelta(days=MAX_AGE_DAYS)
+    return dt < cutoff
 
 
 def load_seen_urls() -> set:
@@ -62,6 +93,16 @@ def main():
     if not articles:
         print("No articles fetched — aborting.", file=sys.stderr)
         sys.exit(1)
+
+    # Filter social media links
+    before = len(articles)
+    articles = [a for a in articles if not _is_social(a)]
+    print(f"Social filter: {before} → {len(articles)} ({before - len(articles)} removed)")
+
+    # Filter articles older than 2 days
+    before = len(articles)
+    articles = [a for a in articles if not _is_too_old(a)]
+    print(f"Age filter: {before} → {len(articles)} ({before - len(articles)} too old)")
 
     seen_urls = load_seen_urls()
     before = len(articles)

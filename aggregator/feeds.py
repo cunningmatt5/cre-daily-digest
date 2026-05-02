@@ -35,36 +35,40 @@ def _truncate(text, max_chars=SUMMARY_MAX_CHARS):
     return result
 
 
-def _parse_rss_date(entry) -> str:
+def _parse_rss_date(entry):
+    """Return (display_str, datetime_obj) from a feedparser entry."""
     tp = entry.get("published_parsed") or entry.get("updated_parsed")
     if tp:
         try:
-            return datetime(*tp[:6]).strftime("%b %d, %Y")
+            dt = datetime(*tp[:6])
+            return dt.strftime("%b %d, %Y"), dt
         except Exception:
             pass
-    return ""
+    return "", None
 
 
-def _parse_html_date(tag) -> str:
-    """Extract a date string from a BeautifulSoup <time> element."""
+def _parse_html_date(tag):
+    """Return (display_str, datetime_obj) from a BeautifulSoup <time> element."""
     if not tag:
-        return ""
-    dt = tag.get("datetime", "")
-    if dt:
+        return "", None
+    raw = tag.get("datetime", "")
+    if raw:
         for fmt in ("%Y-%m-%dT%H:%M:%S", "%Y-%m-%d"):
             try:
-                return datetime.strptime(dt[:19], fmt).strftime("%b %d, %Y")
+                dt = datetime.strptime(raw[:19], fmt)
+                return dt.strftime("%b %d, %Y"), dt
             except ValueError:
                 pass
-    return tag.get_text(strip=True)[:20]
+    return tag.get_text(strip=True)[:20], None
 
 
-def _make_article(title, link, snippet, pub_date, source, position):
+def _make_article(title, link, snippet, pub_date, pub_datetime, source, position):
     return {
         "title": title.strip(),
         "link": link.strip(),
         "summary": _truncate(snippet),
         "pub_date": pub_date,
+        "pub_datetime": pub_datetime,
         "source_name": source["name"],
         "source_short": source["short"],
         "source_color": source["color"],
@@ -89,8 +93,8 @@ def fetch_rss(source):
         raw_summary = entry.get("summary", "") or entry.get("description", "")
         if raw_summary:
             raw_summary = BeautifulSoup(raw_summary, "lxml").get_text(" ", strip=True)
-        pub_date = _parse_rss_date(entry)
-        articles.append(_make_article(title, link, raw_summary, pub_date, source, i))
+        pub_date, pub_datetime = _parse_rss_date(entry)
+        articles.append(_make_article(title, link, raw_summary, pub_date, pub_datetime, source, i))
 
     return articles
 
@@ -118,9 +122,9 @@ def scrape_headlines(source):
         link = urljoin(base, a_tag["href"])
         p_tag = article.find("p")
         snippet = p_tag.get_text(strip=True) if p_tag else ""
-        pub_date = _parse_html_date(article.find("time"))
+        pub_date, pub_datetime = _parse_html_date(article.find("time"))
         if title and link:
-            candidates.append((title, link, snippet, pub_date))
+            candidates.append((title, link, snippet, pub_date, pub_datetime))
 
     # Strategy 2: h2/h3 tags with anchor links
     if not candidates:
@@ -136,14 +140,14 @@ def scrape_headlines(source):
             sibling = tag.find_next_sibling("p")
             snippet = sibling.get_text(strip=True) if sibling else ""
             time_tag = tag.find_next("time")
-            pub_date = _parse_html_date(time_tag)
+            pub_date, pub_datetime = _parse_html_date(time_tag)
             if title and link:
-                candidates.append((title, link, snippet, pub_date))
+                candidates.append((title, link, snippet, pub_date, pub_datetime))
 
     # Deduplicate and cap
     seen = set()
     articles = []
-    for i, (title, link, snippet, pub_date) in enumerate(candidates):
+    for i, (title, link, snippet, pub_date, pub_datetime) in enumerate(candidates):
         if len(articles) >= MAX_ARTICLES_PER_SOURCE:
             break
         norm = link.rstrip("/")
@@ -153,6 +157,6 @@ def scrape_headlines(source):
         if not snippet:
             meta = soup.find("meta", attrs={"name": "description"})
             snippet = meta.get("content", "") if meta else ""
-        articles.append(_make_article(title, link, snippet, pub_date, source, i))
+        articles.append(_make_article(title, link, snippet, pub_date, pub_datetime, source, i))
 
     return articles
