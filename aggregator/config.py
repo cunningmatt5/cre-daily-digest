@@ -126,11 +126,11 @@ SOURCES = [
         "color": ROYAL,
     },
     {
-        "name": "Urban Land Institute",
-        "short": "ULI",
-        # urbanland.uli.org 403'd; try main ULI news page
-        "url": "https://uli.org/news/",
-        "method": "scrape",
+        "name": "CRE Daily",
+        "short": "CRE Daily",
+        # Replaces ULI (RSS dead since Dec 2022, site 403-blocked)
+        "url": "https://www.credaily.com/feed/",
+        "method": "rss",
         "tier_weight": 15,
         "color": ROYAL,
     },
@@ -144,11 +144,11 @@ SOURCES = [
     },
     # ── Tier 3 ──────────────────────────────────────────────────────────
     {
-        "name": "Multi-Housing News",
-        "short": "MHN",
-        # RSS returns 403; scrape homepage instead
-        "url": "https://www.multihousingnews.com/",
-        "method": "scrape",
+        "name": "CRE Daily Multifamily",
+        "short": "CRE MF",
+        # Replaces Multi-Housing News (WAF blocks all access)
+        "url": "https://www.credaily.com/sectors/multifamily/feed",
+        "method": "rss",
         "tier_weight": 12,
         "color": GREEN,
     },
