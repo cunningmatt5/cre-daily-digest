@@ -38,7 +38,7 @@ _SIGNALS = [
     (r"\bcushman\b", 18),
     (r"\bnewmark\b", 16),
     (r"\bmarcus.{1,4}millichap\b", 14),
-    (r"\eastdil\b", 14),
+    (r"\beastdil\b", 14),
     # ── Deal size signals ────────────────────────────────────────────────
     (r"\b\d+(\.\d+)?\s*billion\b", 30),
     (r"\b[5-9]\d{2}\s*million\b", 18),   # $500M+
