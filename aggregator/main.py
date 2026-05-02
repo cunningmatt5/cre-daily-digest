@@ -104,11 +104,15 @@ def load_seen_urls() -> set:
         data = json.loads(SEEN_FILE.read_text(encoding="utf-8"))
     except Exception:
         return set()
-    cutoff = date.today() - timedelta(days=KEEP_DAYS)
+    today = date.today()
+    cutoff = today - timedelta(days=KEEP_DAYS)
     seen = set()
     for date_str, urls in data.items():
         try:
-            if date.fromisoformat(date_str) >= cutoff:
+            d = date.fromisoformat(date_str)
+            # Only block articles from previous days, not today.
+            # This allows same-day reruns to resend the current digest.
+            if cutoff <= d < today:
                 seen.update(urls)
         except ValueError:
             pass
