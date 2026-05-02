@@ -128,8 +128,8 @@ SOURCES = [
     {
         "name": "CRE Daily",
         "short": "CRE Daily",
-        # Replaces ULI (RSS dead since Dec 2022, site 403-blocked)
-        "url": "https://www.credaily.com/feed/",
+        # /feed/ returns empty; /briefs/feed/ is the active article feed
+        "url": "https://www.credaily.com/briefs/feed/",
         "method": "rss",
         "tier_weight": 15,
         "color": ROYAL,
