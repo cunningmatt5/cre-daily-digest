@@ -59,38 +59,38 @@ def _is_too_old(article) -> bool:
     return dt < cutoff
 
 
-def _is_non_article(article) -> bool:
-    """True for landing pages, category pages, feed URLs, profile pages, etc."""
+def _non_article_reason(article) -> str:
+    """Returns a reason string if the article should be filtered, empty string if it should pass."""
     url = article["link"]
     try:
         parsed = urlparse(url)
     except Exception:
-        return True
+        return "unparseable URL"
 
-    # Fragment anchors point to a section of a page, not a standalone article
     if parsed.fragment:
-        return True
+        return f"fragment anchor (#{parsed.fragment})"
 
     path = parsed.path.rstrip("/")
     segments = [s for s in path.split("/") if s]
 
-    # Bare domain or single-segment path → category or home page
     if len(segments) <= 1:
-        return True
+        return f"single-segment path ({path or '/'})"
 
-    # Last segment matches a known non-article category name
-    if segments[-1].lower() in _NON_ARTICLE_ENDINGS:
-        return True
+    last = segments[-1].lower()
+    if last in _NON_ARTICLE_ENDINGS:
+        return f"category/landing path ending ({last})"
 
-    # Profile / author pages
     if _PROFILE_RE.search(path):
-        return True
+        return f"profile/author path ({path})"
 
-    # Title too short to be a real headline (navigation labels, e.g. "Newsroom", "Your Research")
     if len(article.get("title", "")) < 20:
-        return True
+        return f"title too short ({repr(article.get('title', ''))})"
 
-    return False
+    return ""
+
+
+def _is_non_article(article) -> bool:
+    return bool(_non_article_reason(article))
 
 
 def _has_no_date(article) -> bool:
@@ -151,25 +151,25 @@ def main():
         print("No articles fetched — aborting.", file=sys.stderr)
         sys.exit(1)
 
-    # Drop social media links
-    before = len(articles)
-    articles = [a for a in articles if not _is_social(a)]
-    print(f"Social filter:      {before:3} → {len(articles):3} ({before - len(articles)} removed)")
+    def _apply(label, predicate, reason_fn=None):
+        kept, dropped = [], []
+        for a in articles:
+            if predicate(a):
+                dropped.append(a)
+            else:
+                kept.append(a)
+        print(f"{label}: {len(articles):3} → {len(kept):3}  ({len(dropped)} removed)")
+        for a in dropped:
+            reason = reason_fn(a) if reason_fn else ""
+            print(f"  DROPPED [{a['source_name']}] {a['title'][:80]!r}  |  {a['link'][:80]}"
+                  + (f"  |  {reason}" if reason else ""))
+        return kept
 
-    # Drop landing pages, category pages, feed URLs, profile pages
-    before = len(articles)
-    articles = [a for a in articles if not _is_non_article(a)]
-    print(f"Non-article filter: {before:3} → {len(articles):3} ({before - len(articles)} removed)")
-
-    # Drop articles with no parseable publish date
-    before = len(articles)
-    articles = [a for a in articles if not _has_no_date(a)]
-    print(f"No-date filter:     {before:3} → {len(articles):3} ({before - len(articles)} removed)")
-
-    # Drop articles older than 2 days
-    before = len(articles)
-    articles = [a for a in articles if not _is_too_old(a)]
-    print(f"Age filter:         {before:3} → {len(articles):3} ({before - len(articles)} too old)")
+    articles = _apply("Social filter     ", _is_social)
+    articles = _apply("Non-article filter", _is_non_article, _non_article_reason)
+    articles = _apply("No-date filter    ", _has_no_date)
+    articles = _apply("Age filter        ", _is_too_old,
+                      lambda a: f"pub {a['pub_datetime'].strftime('%Y-%m-%d %H:%M') if a.get('pub_datetime') else 'no date'}")
 
     seen_urls = load_seen_urls()
     before = len(articles)
