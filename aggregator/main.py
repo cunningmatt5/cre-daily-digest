@@ -1,4 +1,5 @@
 import json
+import re
 import sys
 from datetime import date, datetime, timedelta
 from pathlib import Path
@@ -13,6 +14,20 @@ from .email_sender import send_gmail
 SEEN_FILE = Path(__file__).parent.parent / "data" / "seen_urls.json"
 KEEP_DAYS = 30
 MAX_AGE_DAYS = 2
+
+# Path endings that indicate a category page, landing page, or feed — not an article
+_NON_ARTICLE_ENDINGS = {
+    "news", "newsroom", "articles", "insights", "research", "your-research",
+    "feed", "rss", "subscribe", "newsletter", "resources", "press-releases",
+    "press", "media", "events", "about", "contact", "home", "overview",
+    "market-research", "market-reports", "white-papers", "reports",
+    "publications", "videos", "video", "podcast", "podcasts", "webinars",
+    "blog", "index", "latest", "archive", "category", "tag", "topics",
+    "mymmi",
+}
+
+# Profile or author URL segments indicate a person page, not an article
+_PROFILE_RE = re.compile(r"/(in|author|profile|people|team|by)/[^/]+/?$", re.I)
 
 SOCIAL_DOMAINS = {
     "linkedin.com", "www.linkedin.com",
@@ -39,9 +54,47 @@ def _is_social(article) -> bool:
 def _is_too_old(article) -> bool:
     dt = article.get("pub_datetime")
     if dt is None:
-        return False  # no date available — keep it (scraped homepage content is inherently recent)
+        return False
     cutoff = datetime.utcnow() - timedelta(days=MAX_AGE_DAYS)
     return dt < cutoff
+
+
+def _is_non_article(article) -> bool:
+    """True for landing pages, category pages, feed URLs, profile pages, etc."""
+    url = article["link"]
+    try:
+        parsed = urlparse(url)
+    except Exception:
+        return True
+
+    # Fragment anchors point to a section of a page, not a standalone article
+    if parsed.fragment:
+        return True
+
+    path = parsed.path.rstrip("/")
+    segments = [s for s in path.split("/") if s]
+
+    # Bare domain or single-segment path → category or home page
+    if len(segments) <= 1:
+        return True
+
+    # Last segment matches a known non-article category name
+    if segments[-1].lower() in _NON_ARTICLE_ENDINGS:
+        return True
+
+    # Profile / author pages
+    if _PROFILE_RE.search(path):
+        return True
+
+    # Title too short to be a real headline (navigation labels, e.g. "Newsroom", "Your Research")
+    if len(article.get("title", "")) < 20:
+        return True
+
+    return False
+
+
+def _has_no_date(article) -> bool:
+    return article.get("pub_datetime") is None
 
 
 def load_seen_urls() -> set:
@@ -94,15 +147,25 @@ def main():
         print("No articles fetched — aborting.", file=sys.stderr)
         sys.exit(1)
 
-    # Filter social media links
+    # Drop social media links
     before = len(articles)
     articles = [a for a in articles if not _is_social(a)]
-    print(f"Social filter: {before} → {len(articles)} ({before - len(articles)} removed)")
+    print(f"Social filter:      {before:3} → {len(articles):3} ({before - len(articles)} removed)")
 
-    # Filter articles older than 2 days
+    # Drop landing pages, category pages, feed URLs, profile pages
+    before = len(articles)
+    articles = [a for a in articles if not _is_non_article(a)]
+    print(f"Non-article filter: {before:3} → {len(articles):3} ({before - len(articles)} removed)")
+
+    # Drop articles with no parseable publish date
+    before = len(articles)
+    articles = [a for a in articles if not _has_no_date(a)]
+    print(f"No-date filter:     {before:3} → {len(articles):3} ({before - len(articles)} removed)")
+
+    # Drop articles older than 2 days
     before = len(articles)
     articles = [a for a in articles if not _is_too_old(a)]
-    print(f"Age filter: {before} → {len(articles)} ({before - len(articles)} too old)")
+    print(f"Age filter:         {before:3} → {len(articles):3} ({before - len(articles)} too old)")
 
     seen_urls = load_seen_urls()
     before = len(articles)
