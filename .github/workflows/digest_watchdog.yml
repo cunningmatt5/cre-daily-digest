@@ -22,14 +22,7 @@ jobs:
         id: check
         run: |
           TODAY=$(date -u +%Y-%m-%d)
-          if python3 -c "
-import json, sys
-try:
-    data = json.load(open('data/seen_urls.json'))
-    sys.exit(0 if '$TODAY' in data else 1)
-except Exception:
-    sys.exit(1)
-"; then
+          if grep -q "\"$TODAY\"" data/seen_urls.json 2>/dev/null; then
             echo "ran=true" >> $GITHUB_OUTPUT
             echo "Digest already ran today ($TODAY) — nothing to do."
           else
