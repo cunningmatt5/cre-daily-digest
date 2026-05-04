@@ -2,11 +2,13 @@ name: CRE Daily Digest
 
 on:
   schedule:
-    - cron: '0 12 * * *'   # 7:00 AM EST / 8:00 AM EDT
-  workflow_dispatch:         # Manual trigger via GitHub Actions UI
+    - cron: '0 12 * * *'   # 8:00 AM EDT — first attempt
+    - cron: '0 13 * * *'   # 9:00 AM EDT — second attempt
+    - cron: '0 14 * * *'   # 10:00 AM EDT — third attempt
+  workflow_dispatch:
 
 permissions:
-  contents: write            # Required to commit seen_urls.json back to repo
+  contents: write
 
 jobs:
   send-digest:
@@ -18,15 +20,30 @@ jobs:
         with:
           token: ${{ secrets.GITHUB_TOKEN }}
 
+      - name: Skip if digest already ran today
+        id: check
+        run: |
+          TODAY=$(date -u +%Y-%m-%d)
+          if grep -q "\"$TODAY\"" data/seen_urls.json 2>/dev/null; then
+            echo "ran=true" >> $GITHUB_OUTPUT
+            echo "Digest already ran today ($TODAY) — skipping."
+          else
+            echo "ran=false" >> $GITHUB_OUTPUT
+            echo "Digest has not run today ($TODAY) — proceeding."
+          fi
+
       - name: Set up Python
+        if: steps.check.outputs.ran == 'false'
         uses: actions/setup-python@v5
         with:
           python-version: '3.11'
 
       - name: Install dependencies
+        if: steps.check.outputs.ran == 'false'
         run: pip install -r requirements.txt
 
       - name: Fetch articles and send digest
+        if: steps.check.outputs.ran == 'false'
         env:
           GMAIL_USER: ${{ secrets.GMAIL_USER }}
           GMAIL_APP_PASSWORD: ${{ secrets.GMAIL_APP_PASSWORD }}
@@ -34,6 +51,7 @@ jobs:
         run: python -m aggregator.main
 
       - name: Save seen URLs
+        if: steps.check.outputs.ran == 'false'
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
