@@ -6,7 +6,7 @@ from datetime import date, datetime, timedelta
 from pathlib import Path
 from urllib.parse import urlparse
 
-from .config import SOURCES
+from .config import SOURCES, MAX_PER_SECTOR
 from .feeds import fetch_all
 from .scorer import score_and_sort, group_by_sector
 from .enrich import enrich
@@ -203,12 +203,15 @@ def main():
         ranked = score_and_sort(articles)
         print(f"Deterministic ranking: {len(ranked)} stories")
 
-    sections = group_by_sector(ranked)
+    # Wide capture, curated display: rank everything, but cap each sector.
     top_stories = sorted(ranked, key=lambda x: x.get("significance", 0), reverse=True)[:5]
+    sections = group_by_sector(ranked, max_per_sector=MAX_PER_SECTOR)
+    shown = sum(len(items) for _, items in sections)
+    print(f"Display: {len(ranked)} ranked -> {shown} shown ({MAX_PER_SECTOR}/sector cap)")
 
     today = date.today()
     subject = f"CRE Daily Digest — {today.strftime('%B %d, %Y')}"
-    html = build_html_email(today, sections, lead=lead, top_stories=top_stories, count=len(ranked))
+    html = build_html_email(today, sections, lead=lead, top_stories=top_stories, count=shown)
 
     if dry_run:
         PREVIEW_FILE.parent.mkdir(exist_ok=True)

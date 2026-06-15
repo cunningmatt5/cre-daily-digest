@@ -211,11 +211,12 @@ def score_and_sort(articles):
     return ranked[:MAX_TOTAL_ARTICLES]
 
 
-def group_by_sector(articles):
+def group_by_sector(articles, max_per_sector=None):
     """Bucket ranked articles into SECTORS order, dropping empty sectors.
 
     Returns a list of ``(sector_name, [articles])`` preserving SECTORS order,
-    with each sector's articles sorted by significance descending.
+    with each sector's articles sorted by significance descending. When
+    ``max_per_sector`` is set, each sector is truncated to its top N.
     """
     buckets = {s: [] for s in SECTORS}
     for a in articles:
@@ -225,5 +226,7 @@ def group_by_sector(articles):
         items = buckets.get(sector) or []
         if items:
             items.sort(key=lambda x: x.get("significance", 0), reverse=True)
+            if max_per_sector:
+                items = items[:max_per_sector]
             out.append((sector, items))
     return out
