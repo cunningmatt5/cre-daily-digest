@@ -6,7 +6,8 @@ from datetime import date, datetime, timedelta
 from pathlib import Path
 from urllib.parse import urlparse
 
-from .config import SOURCES, MAX_PER_SECTOR, DISPLAY_MIN_SIGNIFICANCE
+from .config import (SOURCES, MAX_PER_SECTOR, DISPLAY_MIN_SIGNIFICANCE,
+                     DISPLAY_MIN_STORIES)
 from .feeds import fetch_all
 from .scorer import score_and_sort, group_by_sector
 from .enrich import enrich
@@ -212,15 +213,17 @@ def main():
     if floor:
         kept = [a for a in ranked if a.get("significance", 0) >= floor]
         below = [a for a in ranked if a.get("significance", 0) < floor]
-        if kept:
+        if len(kept) >= DISPLAY_MIN_STORIES:
             display_pool = kept
-            if below:
-                print(f"Significance floor ({floor}): hiding {len(below)} below-threshold stories")
-                for a in sorted(below, key=lambda x: x.get("significance", 0), reverse=True):
-                    print(f"  BELOW[{a.get('significance')}] [{a.get('sector')}] {a['title'][:80]!r}")
+            print(f"Significance floor ({floor}): hiding {len(below)} below-threshold stories")
+            for a in sorted(below, key=lambda x: x.get("significance", 0), reverse=True):
+                print(f"  BELOW[{a.get('significance')}] [{a.get('sector')}] {a['title'][:80]!r}")
         else:
-            print(f"Significance floor ({floor}) left nothing — showing top 15 instead.")
-            display_pool = ranked[:15]
+            # Too few cleared the floor — fall back to the top N so the digest
+            # is never near-empty.
+            display_pool = ranked[:DISPLAY_MIN_STORIES]
+            print(f"Significance floor ({floor}) left only {len(kept)} (< {DISPLAY_MIN_STORIES}); "
+                  f"showing top {len(display_pool)} by significance instead.")
 
     # Wide capture, curated display: cap each sector.
     top_stories = sorted(ranked, key=lambda x: x.get("significance", 0), reverse=True)[:5]

@@ -53,11 +53,21 @@ unrelated to CRE. When in doubt, KEEP it — use a low significance score to ran
 minor stories down rather than dropping them. Better to include a marginal CRE \
 story than to omit a real one.
 
-- significance: 0–100, how much an institutional CRE audience would care. Reward \
-large deal size, marquee institutions (Blackstone, Brookfield, KKR, major REITs \
-and brokers), M&A/IPOs/recapitalizations, distress/defaults/foreclosures, and \
-market-moving macro or policy (Fed, rates, major legislation). Routine local \
-deals and incremental research notes score low.
+- significance: 0–100 for genuine market impact to an institutional CRE \
+audience. Use the FULL range and anchor to these bands (do not compress toward \
+the middle):
+  • 85-100 = market-defining: multi-billion-dollar deals, major M&A/IPOs, or \
+market-moving macro/policy (Fed rate decisions, major legislation).
+  • 70-84 = major: $500M+ transactions; marquee institutions (Blackstone, \
+Brookfield, KKR, Starwood, Apollo, major REITs and brokers like CBRE/JLL) making \
+real moves; large defaults/distress; significant fund closes; sector-wide shifts.
+  • 55-69 = notable: ~$100M-$500M deals, mid-size-firm activity, meaningful \
+regional market or regulatory developments.
+  • 40-54 = routine: smaller or local single-asset deals, individual leases, \
+incremental research notes.
+  • below 40 = minor/marginal.
+A $1B+ deal or a Blackstone/Starwood-scale move is an 80+, not a 55. Reserve \
+sub-55 scores for genuinely small or local items.
 
 - sector: choose the single best fit from this exact list: {", ".join(SECTORS)}. \
 Use "Capital Markets" for financing/M&A/fund/REIT-level stories that aren't tied \
