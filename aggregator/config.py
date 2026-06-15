@@ -327,7 +327,7 @@ MAX_PER_SECTOR = 6
 # Only display stories at/above this LLM significance (0–100). Keeps the email
 # focused on critical news — big deals, major firms, market-moving events —
 # and filters trivia (e.g. a celebrity buying a house). Tunable via env.
-DISPLAY_MIN_SIGNIFICANCE = int(os.environ.get("DIGEST_MIN_SIG", "55"))
+DISPLAY_MIN_SIGNIFICANCE = int(os.environ.get("DIGEST_MIN_SIG", "50"))
 # Safety net: if the floor leaves fewer than this many stories (e.g. a quiet
 # news day or a compressed score distribution), show the top N by significance
 # instead, so the digest is never near-empty.
