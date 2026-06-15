@@ -11,13 +11,19 @@ ROYAL = "#1e40af"
 GREEN = "#1a5c2e"
 
 
-def gnews(query: str) -> str:
+def gnews(query: str, days=None) -> str:
     """Build a Google News RSS search URL for a query.
 
     Used as a resilient proxy for sources that block scraping or have no feed
     (the same pattern already proven for Bloomberg). Returns real publisher
     headlines that the rest of the pipeline treats like any other RSS item.
+
+    ``days`` appends Google's ``when:Nd`` operator to restrict results to the
+    last N days. Without it, ``site:`` searches rank by relevance and return
+    years-old articles that the age filter then discards — so always pass it.
     """
+    if days:
+        query = f"{query} when:{days}d"
     q = quote_plus(query)
     return f"https://news.google.com/rss/search?q={q}&hl=en-US&gl=US&ceid=US:en"
 
@@ -77,7 +83,7 @@ SOURCES = [
         "name": "CoStar",
         "short": "CoStar",
         # Site is login-walled to scrape; Google News surfaces costar.com articles
-        "url": gnews('site:costar.com "commercial real estate"'),
+        "url": gnews("site:costar.com", days=2),
         "method": "rss",
         "tier_weight": 30,
         "color": NAVY,
@@ -87,7 +93,7 @@ SOURCES = [
         "name": "Bloomberg Real Estate",
         "short": "Bloomberg",
         # Bloomberg disabled native RSS; Google News RSS surfaces bloomberg.com CRE articles
-        "url": gnews('site:bloomberg.com "commercial real estate"'),
+        "url": gnews('site:bloomberg.com "real estate"', days=2),
         "method": "rss",
         "tier_weight": 28,
         "color": NAVY,
@@ -97,7 +103,7 @@ SOURCES = [
         "name": "Green Street",
         "short": "Green St",
         # Fully paywalled to scrape; Google News surfaces greenstreetnews.com headlines
-        "url": gnews("site:greenstreetnews.com"),
+        "url": gnews("site:greenstreetnews.com", days=3),
         "method": "rss",
         "tier_weight": 28,
         "color": NAVY,
@@ -124,7 +130,7 @@ SOURCES = [
         "name": "GlobeStreet",
         "short": "GlobeSt",
         # RSS returns 403 and homepage scrape is brittle; Google News proxy
-        "url": gnews("site:globest.com"),
+        "url": gnews("site:globest.com", days=2),
         "method": "rss",
         "tier_weight": 20,
         "color": ROYAL,
@@ -165,7 +171,7 @@ SOURCES = [
     {
         "name": "PERE",
         "short": "PERE",
-        "url": gnews("site:perenews.com"),
+        "url": gnews("site:perenews.com", days=3),
         "method": "rss",
         "tier_weight": 16,
         "color": ROYAL,
@@ -247,8 +253,75 @@ SOURCES = [
         "tier_weight": 10,
         "color": GREEN,
     },
+    # ── Broad discovery (Google News topic queries, time-restricted) ─────
+    # The recall engine: these cast a wide, fresh net across ALL outlets —
+    # not just the publishers listed above — so relevant CRE news from any
+    # source surfaces. The real publisher is read from each item and shown
+    # on the chip. Clustering in the enrichment stage collapses overlaps.
+    {
+        "name": "CRE Headlines",
+        "short": "Wire",
+        "url": gnews("commercial real estate", days=1),
+        "method": "rss",
+        "tier_weight": 12,
+        "color": GREEN,
+    },
+    {
+        "name": "CRE Deals & Capital",
+        "short": "Wire",
+        "url": gnews(
+            'commercial real estate (acquisition OR "sale" OR portfolio OR '
+            'refinancing OR recapitalization OR "joint venture" OR fund)',
+            days=2,
+        ),
+        "method": "rss",
+        "tier_weight": 12,
+        "color": GREEN,
+    },
+    {
+        "name": "CRE Distress & Credit",
+        "short": "Wire",
+        "url": gnews(
+            "commercial real estate (distress OR default OR foreclosure OR "
+            "CMBS OR delinquency OR bankruptcy OR workout)",
+            days=2,
+        ),
+        "method": "rss",
+        "tier_weight": 12,
+        "color": GREEN,
+    },
+    {
+        "name": "CRE by Sector",
+        "short": "Wire",
+        "url": gnews(
+            '(office OR multifamily OR apartment OR industrial OR warehouse OR '
+            'retail OR "data center" OR hotel OR "life science") "real estate" '
+            "(lease OR sale OR development OR financing OR acquisition)",
+            days=2,
+        ),
+        "method": "rss",
+        "tier_weight": 12,
+        "color": GREEN,
+    },
+    {
+        "name": "CRE Major Players",
+        "short": "Wire",
+        "url": gnews(
+            "(Blackstone OR Brookfield OR KKR OR Starwood OR Prologis OR CBRE OR "
+            'JLL OR "Simon Property" OR Related OR Hines) real estate',
+            days=2,
+        ),
+        "method": "rss",
+        "tier_weight": 12,
+        "color": GREEN,
+    },
 ]
 
-MAX_ARTICLES_PER_SOURCE = 5
-MAX_TOTAL_ARTICLES = 60
+# Pull more per source (RSS feeds are freshest-first, so a higher cap = more
+# of today's news, not stale backfill).
+MAX_ARTICLES_PER_SOURCE = 10
+# Candidate-pool cap fed to the enrichment stage (post-filter).
+MAX_TOTAL_ARTICLES = 90
+# Display cap per sector in the email (wide capture, curated display).
+MAX_PER_SECTOR = 6
 SUMMARY_MAX_CHARS = 280

@@ -45,11 +45,13 @@ deduplicated, sector-organized brief.
 
 For EACH input article, decide:
 
-- keep: false for anything that is not a substantive CRE news story — pure \
-marketing/sponsored content, generic "best places to work" listicles, thin SEO \
-filler, personnel-move briefs of no market significance, or items unrelated to \
-commercial real estate. Keep genuine reporting on deals, financings, distress, \
-development, leasing, capital markets, and CRE policy.
+- keep: default to TRUE. Only mark false for items that are clearly NOT \
+commercial-real-estate news: pure marketing/sponsored/press-release fluff, SEO \
+listicles ("top 10 brokers"), event or webinar promos, paywall/login stubs or \
+empty/garbled headlines, purely residential consumer real estate, or articles \
+unrelated to CRE. When in doubt, KEEP it — use a low significance score to rank \
+minor stories down rather than dropping them. Better to include a marginal CRE \
+story than to omit a real one.
 
 - significance: 0–100, how much an institutional CRE audience would care. Reward \
 large deal size, marquee institutions (Blackstone, Brookfield, KKR, major REITs \
@@ -98,7 +100,7 @@ def _call_model(articles):
     )
     with client.messages.stream(
         model=LLM_MODEL,
-        max_tokens=16000,
+        max_tokens=24000,
         thinking={"type": "adaptive"},
         output_config={"effort": LLM_EFFORT, "format": {"type": "json_schema", "schema": _SCHEMA}},
         system=_SYSTEM,
@@ -131,13 +133,17 @@ def enrich(articles):
     lead = (data.get("lead") or "").strip()
     enriched = data.get("articles") or []
 
-    # Group kept articles by cluster.
+    # Group kept articles by cluster; track what the model dropped.
     clusters = {}
+    dropped_titles = []
     for e in enriched:
-        if not e.get("keep"):
-            continue
         idx = e.get("id")
-        if not isinstance(idx, int) or not (0 <= idx < len(articles)):
+        valid = isinstance(idx, int) and 0 <= idx < len(articles)
+        if not e.get("keep"):
+            if valid:
+                dropped_titles.append(articles[idx]["title"])
+            continue
+        if not valid:
             continue
         sector = e.get("sector") if e.get("sector") in SECTORS else "Other"
         item = {
@@ -173,5 +179,9 @@ def enrich(articles):
 
     ranked.sort(key=lambda x: x["significance"], reverse=True)
     ranked = ranked[:MAX_TOTAL_ARTICLES]
-    print(f"Enrichment: {len(enriched)} scored -> {len(ranked)} stories after clustering.")
+    kept_articles = sum(len(m) for m in clusters.values())
+    print(f"Enrichment: {len(enriched)} scored -> {len(dropped_titles)} dropped (non-news), "
+          f"{kept_articles} kept -> {len(ranked)} distinct stories after clustering.")
+    for t in dropped_titles[:25]:
+        print(f"  DROPPED(keep=false) {t[:90]!r}")
     return lead, ranked

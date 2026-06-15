@@ -97,12 +97,22 @@ def _make_article(title, link, snippet, pub_date, pub_datetime, source, position
     }
 
 
+def _gnews_publisher(entry):
+    """Real publisher name from a Google News entry's <source> element, if any."""
+    src = entry.get("source")
+    if src is None:
+        return ""
+    title = getattr(src, "title", None) or (src.get("title") if isinstance(src, dict) else None)
+    return (title or "").strip()
+
+
 def fetch_rss(source):
     try:
         feed = feedparser.parse(source["url"])
     except Exception:
         return []
 
+    is_gnews = "news.google.com" in source["url"]
     articles = []
     for i, entry in enumerate(feed.entries[:MAX_ARTICLES_PER_SOURCE]):
         title = entry.get("title", "").strip()
@@ -115,7 +125,20 @@ def fetch_rss(source):
         pub_date, pub_datetime = _parse_rss_date(entry)
         if not pub_datetime:
             pub_date, pub_datetime = _date_from_url(link)
-        articles.append(_make_article(title, link, raw_summary, pub_date, pub_datetime, source, i))
+        article = _make_article(title, link, raw_summary, pub_date, pub_datetime, source, i)
+
+        # Google News items carry the originating outlet; surface it on the chip
+        # and strip the trailing " - Publisher" that Google appends to titles.
+        if is_gnews:
+            pub = _gnews_publisher(entry)
+            if pub:
+                suffix = f" - {pub}"
+                if article["title"].endswith(suffix):
+                    article["title"] = article["title"][: -len(suffix)].strip()
+                article["source_short"] = pub
+                article["source_name"] = pub
+
+        articles.append(article)
 
     return articles
 
