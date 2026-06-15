@@ -9,7 +9,7 @@ deterministic scorer, so the digest always sends.
 import json
 import sys
 
-from .config import LLM_MODEL, LLM_EFFORT, SECTORS, MAX_TOTAL_ARTICLES
+from .config import LLM_MODEL, SECTORS, MAX_TOTAL_ARTICLES
 
 # Per-article fields the model returns. Numeric bounds are described in prose
 # (the prompt), not as JSON-Schema min/max — structured outputs ignore those.
@@ -98,11 +98,16 @@ def _call_model(articles):
         "Here are today's candidate CRE articles. Process every one per your "
         "instructions.\n\n" + _build_input(articles)
     )
+    # Bulk classification against an explicit rubric — not deep reasoning.
+    # Extended thinking would consume the token budget and starve the JSON
+    # output (it once truncated 127 articles down to 2). Disable it and give
+    # the whole budget to the structured output; the schema constrains the
+    # response, so no reasoning can leak into the text.
     with client.messages.stream(
         model=LLM_MODEL,
-        max_tokens=24000,
-        thinking={"type": "adaptive"},
-        output_config={"effort": LLM_EFFORT, "format": {"type": "json_schema", "schema": _SCHEMA}},
+        max_tokens=32000,
+        thinking={"type": "disabled"},
+        output_config={"format": {"type": "json_schema", "schema": _SCHEMA}},
         system=_SYSTEM,
         messages=[{"role": "user", "content": user}],
     ) as stream:
@@ -132,6 +137,9 @@ def enrich(articles):
 
     lead = (data.get("lead") or "").strip()
     enriched = data.get("articles") or []
+    if len(enriched) < 0.6 * len(articles):
+        print(f"WARNING: model returned {len(enriched)} of {len(articles)} articles — "
+              f"possible output truncation.", file=sys.stderr)
 
     # Group kept articles by cluster; track what the model dropped.
     clusters = {}
