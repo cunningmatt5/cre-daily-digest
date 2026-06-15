@@ -46,17 +46,19 @@ SECTORS = [
     "Other",
 ]
 
+# Curated jewel-tone palette — saturated but tonally coordinated so the
+# per-sector accents read as a set, not a clash.
 SECTOR_COLORS = {
-    "Capital Markets":           "#0d1b3e",
-    "Office":                    "#1e3a8a",
-    "Multifamily":               "#1a5c2e",
-    "Industrial":                "#92400e",
-    "Retail":                    "#9d174d",
-    "Hospitality":               "#7c2d12",
-    "Data Centers":              "#3730a3",
-    "Healthcare & Life Science": "#0e7490",
-    "Macro & Policy":            "#374151",
-    "Other":                     "#4b5563",
+    "Capital Markets":           "#0d1b3e",  # navy
+    "Office":                    "#1d4ed8",  # blue
+    "Multifamily":               "#047857",  # emerald
+    "Industrial":                "#b45309",  # amber
+    "Retail":                    "#be123c",  # rose
+    "Hospitality":               "#7c3aed",  # violet
+    "Data Centers":              "#0e7490",  # cyan
+    "Healthcare & Life Science": "#0f766e",  # teal
+    "Macro & Policy":            "#475569",  # slate
+    "Other":                     "#64748b",  # gray
 }
 
 SOURCES = [
