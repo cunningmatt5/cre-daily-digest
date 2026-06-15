@@ -21,6 +21,10 @@ on:
         description: 'Send even if a digest already ran today'
         type: boolean
         default: false
+      dry_run:
+        description: 'Test run — build the digest and log the funnel but do NOT send'
+        type: boolean
+        default: false
 
 permissions:
   contents: write
@@ -67,6 +71,7 @@ jobs:
           GMAIL_APP_PASSWORD: ${{ secrets.GMAIL_APP_PASSWORD }}
           RECIPIENT_EMAIL: ${{ secrets.RECIPIENT_EMAIL }}
           ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+          DIGEST_DRY_RUN: ${{ github.event.inputs.dry_run == 'true' && '1' || '0' }}
         run: python -m aggregator.main
 
       - name: Save seen URLs

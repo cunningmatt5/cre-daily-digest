@@ -6,7 +6,7 @@ from datetime import date, datetime, timedelta
 from pathlib import Path
 from urllib.parse import urlparse
 
-from .config import SOURCES, MAX_PER_SECTOR
+from .config import SOURCES, MAX_PER_SECTOR, DISPLAY_MIN_SIGNIFICANCE
 from .feeds import fetch_all
 from .scorer import score_and_sort, group_by_sector
 from .enrich import enrich
@@ -199,15 +199,34 @@ def main():
     result = enrich(articles)
     if result is not None:
         lead, ranked = result
+        enriched = True
     else:
         ranked = score_and_sort(articles)
+        enriched = False
         print(f"Deterministic ranking: {len(ranked)} stories")
 
-    # Wide capture, curated display: rank everything, but cap each sector.
+    # Significance floor — show only critical stories. LLM significance is a
+    # calibrated 0–100; the fallback scorer's scale isn't, so skip the floor there.
+    floor = DISPLAY_MIN_SIGNIFICANCE if enriched else 0
+    display_pool = ranked
+    if floor:
+        kept = [a for a in ranked if a.get("significance", 0) >= floor]
+        below = [a for a in ranked if a.get("significance", 0) < floor]
+        if kept:
+            display_pool = kept
+            if below:
+                print(f"Significance floor ({floor}): hiding {len(below)} below-threshold stories")
+                for a in sorted(below, key=lambda x: x.get("significance", 0), reverse=True):
+                    print(f"  BELOW[{a.get('significance')}] [{a.get('sector')}] {a['title'][:80]!r}")
+        else:
+            print(f"Significance floor ({floor}) left nothing — showing top 15 instead.")
+            display_pool = ranked[:15]
+
+    # Wide capture, curated display: cap each sector.
     top_stories = sorted(ranked, key=lambda x: x.get("significance", 0), reverse=True)[:5]
-    sections = group_by_sector(ranked, max_per_sector=MAX_PER_SECTOR)
+    sections = group_by_sector(display_pool, max_per_sector=MAX_PER_SECTOR)
     shown = sum(len(items) for _, items in sections)
-    print(f"Display: {len(ranked)} ranked -> {shown} shown ({MAX_PER_SECTOR}/sector cap)")
+    print(f"Display: {len(ranked)} ranked -> {shown} shown (floor {floor}, {MAX_PER_SECTOR}/sector)")
 
     today = date.today()
     subject = f"CRE Daily Digest — {today.strftime('%B %d, %Y')}"

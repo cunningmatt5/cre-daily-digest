@@ -324,4 +324,8 @@ MAX_ARTICLES_PER_SOURCE = 10
 MAX_TOTAL_ARTICLES = 90
 # Display cap per sector in the email (wide capture, curated display).
 MAX_PER_SECTOR = 6
+# Only display stories at/above this LLM significance (0–100). Keeps the email
+# focused on critical news — big deals, major firms, market-moving events —
+# and filters trivia (e.g. a celebrity buying a house). Tunable via env.
+DISPLAY_MIN_SIGNIFICANCE = int(os.environ.get("DIGEST_MIN_SIG", "60"))
 SUMMARY_MAX_CHARS = 280
