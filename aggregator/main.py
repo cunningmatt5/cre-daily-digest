@@ -204,10 +204,11 @@ def main():
         print(f"Deterministic ranking: {len(ranked)} stories")
 
     sections = group_by_sector(ranked)
+    top_stories = sorted(ranked, key=lambda x: x.get("significance", 0), reverse=True)[:5]
 
     today = date.today()
     subject = f"CRE Daily Digest — {today.strftime('%B %d, %Y')}"
-    html = build_html_email(today, sections, lead=lead, count=len(ranked))
+    html = build_html_email(today, sections, lead=lead, top_stories=top_stories, count=len(ranked))
 
     if dry_run:
         PREVIEW_FILE.parent.mkdir(exist_ok=True)
