@@ -1,10 +1,20 @@
 name: CRE Daily Digest
 
 on:
+  # PRIMARY trigger: an external scheduler (cron-job.org) calls the
+  # workflow_dispatch API at 6:30 AM America/New_York (DST-aware). See
+  # SCHEDULING.md for setup. That path isn't subject to GitHub's schedule-queue
+  # delays, so it delivers on time.
+  #
+  # FALLBACK: the cron entries below, in case the external trigger fails.
+  # GitHub runs `schedule` in UTC only (no DST) and heavily deprioritizes
+  # jobs at :00 of the hour, so we use odd, off-peak minutes and stagger
+  # several early attempts. The skip-if-already-ran guard sends only the first.
   schedule:
-    - cron: '0 12 * * *'   # 8:00 AM EDT — first attempt
-    - cron: '0 13 * * *'   # 9:00 AM EDT — second attempt
-    - cron: '0 14 * * *'   # 10:00 AM EDT — third attempt
+    - cron: '22 10 * * *'   # ~6:22 AM EDT / 5:22 AM EST — first attempt
+    - cron: '47 10 * * *'   # ~6:47 AM EDT / 5:47 AM EST
+    - cron: '23 11 * * *'   # ~7:23 AM EDT / 6:23 AM EST
+    - cron: '8 12 * * *'    # ~8:08 AM EDT / 7:08 AM EST — safety net
   workflow_dispatch:
 
 permissions:
