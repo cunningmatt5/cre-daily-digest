@@ -1,3 +1,7 @@
+import os
+from urllib.parse import quote_plus
+
+# ── Tier colors (source chips) ───────────────────────────────────────────────
 # Tier 1 = Navy (#0d1b3e) — premium / highest authority
 # Tier 2 = Royal Blue (#1e40af) — core trade press + major brokers
 # Tier 3 = Forest Green (#1a5c2e) — sector-specific / associations
@@ -5,6 +9,55 @@
 NAVY  = "#0d1b3e"
 ROYAL = "#1e40af"
 GREEN = "#1a5c2e"
+
+
+def gnews(query: str) -> str:
+    """Build a Google News RSS search URL for a query.
+
+    Used as a resilient proxy for sources that block scraping or have no feed
+    (the same pattern already proven for Bloomberg). Returns real publisher
+    headlines that the rest of the pipeline treats like any other RSS item.
+    """
+    q = quote_plus(query)
+    return f"https://news.google.com/rss/search?q={q}&hl=en-US&gl=US&ceid=US:en"
+
+
+# ── LLM enrichment config ────────────────────────────────────────────────────
+# The enrichment stage (clustering, ranking, summarizing, sectoring) runs only
+# when an API key is present. Without it the pipeline falls back to the
+# deterministic scorer, so the digest always sends.
+LLM_MODEL = os.environ.get("DIGEST_MODEL", "claude-opus-4-8")
+LLM_EFFORT = os.environ.get("DIGEST_EFFORT", "high")  # low | medium | high | max
+LLM_ENABLED = bool(os.environ.get("ANTHROPIC_API_KEY"))
+
+# ── Sectors (display order + band color) ─────────────────────────────────────
+# The enrichment stage tags every story with exactly one of these labels.
+# Order here is the order sections appear in the email.
+SECTORS = [
+    "Capital Markets",
+    "Office",
+    "Multifamily",
+    "Industrial",
+    "Retail",
+    "Hospitality",
+    "Data Centers",
+    "Healthcare & Life Science",
+    "Macro & Policy",
+    "Other",
+]
+
+SECTOR_COLORS = {
+    "Capital Markets":           "#0d1b3e",
+    "Office":                    "#1e3a8a",
+    "Multifamily":               "#1a5c2e",
+    "Industrial":                "#92400e",
+    "Retail":                    "#9d174d",
+    "Hospitality":               "#7c2d12",
+    "Data Centers":              "#3730a3",
+    "Healthcare & Life Science": "#0e7490",
+    "Macro & Policy":            "#374151",
+    "Other":                     "#4b5563",
+}
 
 SOURCES = [
     # ── Tier 1 ──────────────────────────────────────────────────────────
@@ -21,9 +74,9 @@ SOURCES = [
     {
         "name": "CoStar",
         "short": "CoStar",
-        # Login-walled; scrape returns 0 — kept for reference
-        "url": "https://www.costar.com/news",
-        "method": "scrape",
+        # Site is login-walled to scrape; Google News surfaces costar.com articles
+        "url": gnews('site:costar.com "commercial real estate"'),
+        "method": "rss",
         "tier_weight": 30,
         "color": NAVY,
         "paywalled": True,
@@ -32,7 +85,7 @@ SOURCES = [
         "name": "Bloomberg Real Estate",
         "short": "Bloomberg",
         # Bloomberg disabled native RSS; Google News RSS surfaces bloomberg.com CRE articles
-        "url": "https://news.google.com/rss/search?q=site:bloomberg.com+%22commercial+real+estate%22&hl=en-US&gl=US&ceid=US:en",
+        "url": gnews('site:bloomberg.com "commercial real estate"'),
         "method": "rss",
         "tier_weight": 28,
         "color": NAVY,
@@ -41,9 +94,9 @@ SOURCES = [
     {
         "name": "Green Street",
         "short": "Green St",
-        # Fully paywalled — scrape returns 0; kept for reference
-        "url": "https://www.greenstreetnews.com/articles",
-        "method": "scrape",
+        # Fully paywalled to scrape; Google News surfaces greenstreetnews.com headlines
+        "url": gnews("site:greenstreetnews.com"),
+        "method": "rss",
         "tier_weight": 28,
         "color": NAVY,
         "paywalled": True,
@@ -68,9 +121,9 @@ SOURCES = [
     {
         "name": "GlobeStreet",
         "short": "GlobeSt",
-        # RSS returns 403; scrape homepage instead
-        "url": "https://www.globest.com/",
-        "method": "scrape",
+        # RSS returns 403 and homepage scrape is brittle; Google News proxy
+        "url": gnews("site:globest.com"),
+        "method": "rss",
         "tier_weight": 20,
         "color": ROYAL,
     },
@@ -110,20 +163,11 @@ SOURCES = [
     {
         "name": "PERE",
         "short": "PERE",
-        "url": "https://www.perenews.com/",
-        "method": "scrape",
+        "url": gnews("site:perenews.com"),
+        "method": "rss",
         "tier_weight": 16,
         "color": ROYAL,
         "paywalled": True,
-    },
-    {
-        "name": "National Real Estate Investor",
-        "short": "NREI",
-        # RSS URL was dead; scrape nreionline.com directly
-        "url": "https://www.nreionline.com/",
-        "method": "scrape",
-        "tier_weight": 16,
-        "color": ROYAL,
     },
     {
         "name": "CRE Daily",
@@ -146,7 +190,6 @@ SOURCES = [
     {
         "name": "CRE Daily Multifamily",
         "short": "CRE MF",
-        # Replaces Multi-Housing News (WAF blocks all access)
         "url": "https://www.credaily.com/sectors/multifamily/feed",
         "method": "rss",
         "tier_weight": 12,
@@ -189,6 +232,15 @@ SOURCES = [
         "name": "Nareit",
         "short": "Nareit",
         "url": "https://www.reit.com/news/rss.xml",
+        "method": "rss",
+        "tier_weight": 10,
+        "color": GREEN,
+    },
+    {
+        "name": "Data Center Dynamics",
+        "short": "DCD",
+        # Data-center coverage — a fast-growing CRE sector underrepresented above
+        "url": "https://www.datacenterdynamics.com/rss/",
         "method": "rss",
         "tier_weight": 10,
         "color": GREEN,

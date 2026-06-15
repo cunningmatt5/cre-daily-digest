@@ -1,4 +1,5 @@
 import json
+import os
 import re
 import sys
 from datetime import date, datetime, timedelta
@@ -6,12 +7,14 @@ from pathlib import Path
 from urllib.parse import urlparse
 
 from .config import SOURCES
-from .feeds import fetch_rss, scrape_headlines
-from .scorer import score_and_sort
+from .feeds import fetch_all
+from .scorer import score_and_sort, group_by_sector
+from .enrich import enrich
 from .formatter import build_html_email
 from .email_sender import send_gmail
 
 SEEN_FILE = Path(__file__).parent.parent / "data" / "seen_urls.json"
+PREVIEW_FILE = Path(__file__).parent.parent / "data" / "preview.html"
 KEEP_DAYS = 30
 MAX_AGE_DAYS = 2
 
@@ -145,18 +148,17 @@ def save_seen_urls(urls: list):
 
 
 def main():
-    print("Fetching CRE articles...")
-    articles = []
-    for source in SOURCES:
+    # Logs use Unicode (→, ·); force UTF-8 so a Windows cp1252 console doesn't crash.
+    for stream in (sys.stdout, sys.stderr):
         try:
-            if source["method"] == "rss":
-                fetched = fetch_rss(source)
-            else:
-                fetched = scrape_headlines(source)
-            print(f"  [{source['name']}] {len(fetched)} articles")
-            articles.extend(fetched)
-        except Exception as exc:
-            print(f"  [{source['name']}] FAILED: {exc}", file=sys.stderr)
+            stream.reconfigure(encoding="utf-8")
+        except (AttributeError, ValueError):
+            pass
+
+    dry_run = os.environ.get("DIGEST_DRY_RUN") == "1"
+
+    print("Fetching CRE articles...")
+    articles = fetch_all(SOURCES)
 
     if not articles:
         print("No articles fetched — aborting.", file=sys.stderr)
@@ -191,12 +193,28 @@ def main():
         print("All articles already sent in previous digests — nothing new to send.")
         sys.exit(0)
 
-    ranked = score_and_sort(articles)
-    print(f"Ranked {len(ranked)} articles total")
+    # Claude enrichment (cluster + rank + summarize + sector). Falls back to the
+    # deterministic scorer if the API is unavailable, so the digest always sends.
+    lead = None
+    result = enrich(articles)
+    if result is not None:
+        lead, ranked = result
+    else:
+        ranked = score_and_sort(articles)
+        print(f"Deterministic ranking: {len(ranked)} stories")
+
+    sections = group_by_sector(ranked)
 
     today = date.today()
     subject = f"CRE Daily Digest — {today.strftime('%B %d, %Y')}"
-    html = build_html_email(ranked, today)
+    html = build_html_email(today, sections, lead=lead, count=len(ranked))
+
+    if dry_run:
+        PREVIEW_FILE.parent.mkdir(exist_ok=True)
+        PREVIEW_FILE.write_text(html, encoding="utf-8")
+        print(f"DRY RUN — wrote preview to {PREVIEW_FILE} (no email sent, seen URLs unchanged).")
+        return
+
     send_gmail(html, subject)
 
     save_seen_urls([a["link"].rstrip("/") for a in ranked])

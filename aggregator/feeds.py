@@ -1,7 +1,10 @@
 import feedparser
 import re
+import sys
+import time
 import requests
 from bs4 import BeautifulSoup
+from concurrent.futures import ThreadPoolExecutor, as_completed
 from datetime import datetime
 from urllib.parse import urljoin
 
@@ -179,4 +182,43 @@ def scrape_headlines(source):
             pub_date, pub_datetime = _date_from_url(link)
         articles.append(_make_article(title, link, snippet, pub_date, pub_datetime, source, i))
 
+    return articles
+
+
+def _fetch_one(source, retries=2):
+    """Fetch a single source with a small retry, returning a list of articles."""
+    fetch = fetch_rss if source["method"] == "rss" else scrape_headlines
+    last_exc = None
+    for attempt in range(retries + 1):
+        try:
+            result = fetch(source)
+            if result:
+                return result
+            # Empty result: retry once in case of a transient blip, else accept empty
+        except Exception as exc:  # noqa: BLE001 — surfaced to caller for logging
+            last_exc = exc
+        if attempt < retries:
+            time.sleep(1.0 * (attempt + 1))
+    if last_exc is not None:
+        raise last_exc
+    return []
+
+
+def fetch_all(sources, max_workers=8):
+    """Fetch every source in parallel, printing per-source counts.
+
+    Returns a flat list of article dicts. Failures are logged but never abort
+    the run — a dead source just contributes nothing.
+    """
+    articles = []
+    with ThreadPoolExecutor(max_workers=max_workers) as pool:
+        futures = {pool.submit(_fetch_one, s): s for s in sources}
+        for future in as_completed(futures):
+            source = futures[future]
+            try:
+                fetched = future.result()
+                print(f"  [{source['name']}] {len(fetched)} articles")
+                articles.extend(fetched)
+            except Exception as exc:  # noqa: BLE001
+                print(f"  [{source['name']}] FAILED: {exc}", file=sys.stderr)
     return articles

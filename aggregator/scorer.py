@@ -1,5 +1,15 @@
+"""Deterministic fallback ranker.
+
+Used only when the Claude enrichment stage is unavailable. It keyword-scores
+headlines, boosts recent and cross-source-corroborated stories, collapses
+near-duplicate titles, and assigns a coarse sector — so the email looks the same
+whether or not the LLM ran (just without the editor's lead and crisp summaries).
+"""
+
 import re
-from .config import MAX_TOTAL_ARTICLES
+from datetime import datetime
+
+from .config import MAX_TOTAL_ARTICLES, SECTORS
 
 # Each tuple: (regex pattern, point value)
 # Checked against lowercase headline + summary text.
@@ -83,6 +93,26 @@ _SIGNALS = [
 
 _COMPILED = [(re.compile(pat, re.I), pts) for pat, pts in _SIGNALS]
 
+# Ordered (sector, keyword-regex) — first property-type match wins, then the
+# cross-cutting buckets. Mirrors how the LLM is told to tag.
+_SECTOR_RULES = [
+    ("Data Centers", r"\bdata center\b|\bhyperscale\b|\bcolocation\b"),
+    ("Multifamily", r"\bmultifamily\b|\bapartment\b|\bmulti-?housing\b|\brental housing\b|\bsenior housing\b"),
+    ("Hospitality", r"\bhotel\b|\bhospitality\b|\blodging\b|\bresort\b|\bmotel\b"),
+    ("Healthcare & Life Science", r"\blife science\b|\blab space\b|\bmedical office\b|\bhealthcare\b|\bbiotech\b"),
+    ("Industrial", r"\bindustrial\b|\bwarehouse\b|\blogistics\b|\bfulfillment\b|\bdistribution center\b"),
+    ("Retail", r"\bretail\b|\bshopping center\b|\bmall\b|\bstorefront\b|\bgrocery-anchored\b"),
+    ("Office", r"\boffice\b|\bcoworking\b|\bworkplace\b"),
+    ("Capital Markets", r"\bcmbs\b|\brefinanc\w+\b|\brecapitaliz\w+\b|\bacquisition\b|\bmerger\b|\bipo\b|\bfund\b|\breit\b|\bloan\b|\bdebt\b|\blender\b|\bbillion\b|\bmillion\b"),
+    ("Macro & Policy", r"\bfederal reserve\b|\binterest rate\b|\binflation\b|\brecession\b|\btariff\b|\bzoning\b|\blegislation\b|\bregulation\b|\btax\b"),
+]
+_SECTOR_COMPILED = [(name, re.compile(pat, re.I)) for name, pat in _SECTOR_RULES]
+
+_STOPWORDS = {
+    "the", "a", "an", "to", "of", "in", "on", "for", "and", "as", "at", "by",
+    "with", "from", "is", "are", "be", "new", "us", "amid", "after", "over",
+}
+
 
 def _headline_score(text: str) -> int:
     total = 0
@@ -90,6 +120,48 @@ def _headline_score(text: str) -> int:
         if pattern.search(text):
             total += pts
     return total
+
+
+def _classify_sector(text: str) -> str:
+    for name, pattern in _SECTOR_COMPILED:
+        if pattern.search(text):
+            return name
+    return "Other"
+
+
+def _recency_bonus(article) -> int:
+    dt = article.get("pub_datetime")
+    if not dt:
+        return 0
+    age_days = (datetime.utcnow() - dt).total_seconds() / 86400
+    if age_days <= 1:
+        return 20
+    if age_days <= 2:
+        return 10
+    return 0
+
+
+def _title_tokens(title: str) -> frozenset:
+    words = re.findall(r"[a-z0-9]+", title.lower())
+    return frozenset(w for w in words if w not in _STOPWORDS and len(w) > 2)
+
+
+def _cluster_duplicates(articles):
+    """Greedy Jaccard clustering of near-identical titles (O(n^2), n is small)."""
+    clusters = []  # each: {"members": [...], "tokens": frozenset}
+    for a in articles:
+        toks = _title_tokens(a["title"])
+        placed = False
+        for c in clusters:
+            inter = len(toks & c["tokens"])
+            union = len(toks | c["tokens"]) or 1
+            if inter / union >= 0.6:
+                c["members"].append(a)
+                placed = True
+                break
+        if not placed:
+            clusters.append({"members": [a], "tokens": toks})
+    return clusters
 
 
 def score_and_sort(articles):
@@ -101,13 +173,57 @@ def score_and_sort(articles):
             seen.add(key)
             unique.append(a)
 
-    for a in unique:
-        text = f"{a['title']} {a.get('summary', '')}"
-        # Headline prestige + feed position (top of feed = more featured)
-        # Position penalty capped so a strong headline from position 4 still beats
-        # a weak headline from position 0.
-        position_penalty = min(a["position"], 4) * 8
-        a["score"] = _headline_score(text) + max(0, 40 - position_penalty)
+    clusters = _cluster_duplicates(unique)
 
-    unique.sort(key=lambda x: x["score"], reverse=True)
-    return unique[:MAX_TOTAL_ARTICLES]
+    ranked = []
+    for c in clusters:
+        members = c["members"]
+        # Canonical = member with the strongest base headline score, tie-broken
+        # by feed position (lower = more featured).
+        def base(a):
+            text = f"{a['title']} {a.get('summary', '')}"
+            return _headline_score(text) - min(a.get("position", 0), 4)
+        members.sort(key=base, reverse=True)
+        canonical = dict(members[0])
+
+        text = f"{canonical['title']} {canonical.get('summary', '')}"
+        position_penalty = min(canonical.get("position", 0), 4) * 8
+        corroboration = (len(members) - 1) * 12  # covered by multiple outlets
+        canonical["significance"] = (
+            _headline_score(text)
+            + max(0, 40 - position_penalty)
+            + _recency_bonus(canonical)
+            + corroboration
+        )
+        canonical["sector"] = _classify_sector(text)
+
+        also = []
+        seen_src = {canonical.get("source_short")}
+        for m in members[1:]:
+            s = m.get("source_short")
+            if s and s not in seen_src:
+                seen_src.add(s)
+                also.append(s)
+        canonical["also_sources"] = also
+        ranked.append(canonical)
+
+    ranked.sort(key=lambda x: x["significance"], reverse=True)
+    return ranked[:MAX_TOTAL_ARTICLES]
+
+
+def group_by_sector(articles):
+    """Bucket ranked articles into SECTORS order, dropping empty sectors.
+
+    Returns a list of ``(sector_name, [articles])`` preserving SECTORS order,
+    with each sector's articles sorted by significance descending.
+    """
+    buckets = {s: [] for s in SECTORS}
+    for a in articles:
+        buckets.setdefault(a.get("sector", "Other"), []).append(a)
+    out = []
+    for sector in SECTORS:
+        items = buckets.get(sector) or []
+        if items:
+            items.sort(key=lambda x: x.get("significance", 0), reverse=True)
+            out.append((sector, items))
+    return out
