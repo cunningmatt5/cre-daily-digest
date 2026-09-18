@@ -1,20 +1,26 @@
 name: CRE Daily Digest
 
 on:
-  # PRIMARY trigger: an external scheduler (cron-job.org) calls the
-  # workflow_dispatch API at 6:30 AM America/New_York (DST-aware). See
-  # SCHEDULING.md for setup. That path isn't subject to GitHub's schedule-queue
-  # delays, so it delivers on time.
+  # GitHub runs `schedule` in UTC only (no DST) and treats it as best-effort:
+  # measured over 20 days, the first run of the day landed a MEDIAN of ~4h10
+  # after its cron time (min 3h05, max 7h15), so digests were arriving
+  # 9:30 AM - 1:30 PM ET instead of the 6:30 AM target.
   #
-  # FALLBACK: the cron entries below, in case the external trigger fails.
-  # GitHub runs `schedule` in UTC only (no DST) and heavily deprioritizes
-  # jobs at :00 of the hour, so we use odd, off-peak minutes and stagger
-  # several early attempts. The skip-if-already-ran guard sends only the first.
+  # So the crons below are deliberately set ~4h BEFORE the desired send time,
+  # to be absorbed by that queue delay. This does NOT make the digest stale:
+  # the job fetches when it actually dequeues (~10:30 UTC), not at cron time.
+  #
+  # Two regimes are covered, and the skip-if-already-ran guard sends only the
+  # first one through:
+  #   - queue delayed (typical): the 06:22 attempt dequeues ~10:30 UTC.
+  #   - queue empty (occasional): the early attempts are held back by the
+  #     EARLIEST_SEND_UTC floor below, and the 10:22 attempt sends on time.
   schedule:
-    - cron: '22 10 * * *'   # ~6:22 AM EDT / 5:22 AM EST — first attempt
-    - cron: '47 10 * * *'   # ~6:47 AM EDT / 5:47 AM EST
-    - cron: '23 11 * * *'   # ~7:23 AM EDT / 6:23 AM EST
-    - cron: '8 12 * * *'    # ~8:08 AM EDT / 7:08 AM EST — safety net
+    - cron: '22 6 * * *'    # 2:22 AM ET — expects ~4h delay => ~6:30 AM ET
+    - cron: '47 6 * * *'
+    - cron: '23 7 * * *'
+    - cron: '22 10 * * *'   # clears the floor; covers the no-delay case
+    - cron: '8 12 * * *'    # final safety net
   workflow_dispatch:
     inputs:
       force:
@@ -39,16 +45,27 @@ jobs:
         with:
           token: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: Skip if digest already ran today
+      - name: Skip if digest already ran today, or if it is too early to send
         id: check
+        env:
+          # Don't email before this UTC time: 6:00 AM EDT / 5:00 AM EST. The
+          # early crons only exist to be absorbed by GitHub's queue delay; if
+          # the queue happens to be empty they would otherwise fire at ~2 AM ET.
+          # Later crons (10:22, 12:08 UTC) are past this floor, so a day where
+          # every attempt runs promptly still gets a digest.
+          EARLIEST_SEND_UTC: '10:00'
         run: |
           TODAY=$(date -u +%Y-%m-%d)
+          NOW=$(date -u +%H:%M)
           if [ "${{ github.event.inputs.force }}" = "true" ]; then
             echo "ran=false" >> $GITHUB_OUTPUT
             echo "Force run requested — proceeding regardless of today's history."
           elif grep -q "\"$TODAY\"" data/seen_urls.json 2>/dev/null; then
             echo "ran=true" >> $GITHUB_OUTPUT
             echo "Digest already ran today ($TODAY) — skipping."
+          elif [ "${{ github.event_name }}" = "schedule" ] && [[ "$NOW" < "$EARLIEST_SEND_UTC" ]]; then
+            echo "ran=true" >> $GITHUB_OUTPUT
+            echo "Too early to send ($NOW UTC < $EARLIEST_SEND_UTC UTC) — the queue was fast today. A later attempt will send."
           else
             echo "ran=false" >> $GITHUB_OUTPUT
             echo "Digest has not run today ($TODAY) — proceeding."
