@@ -91,6 +91,17 @@ jobs:
           DIGEST_DRY_RUN: ${{ github.event.inputs.dry_run == 'true' && '1' || '0' }}
         run: python -m aggregator.main
 
+      - name: Upload dry-run preview
+        # dry_run renders the email to data/preview.html, which is gitignored —
+        # so without this the file was written to the runner and thrown away,
+        # leaving no way to see the email being tuned.
+        if: steps.check.outputs.ran == 'false' && github.event.inputs.dry_run == 'true'
+        uses: actions/upload-artifact@v4
+        with:
+          name: digest-preview
+          path: data/preview.html
+          if-no-files-found: warn
+
       - name: Save seen URLs
         if: steps.check.outputs.ran == 'false'
         run: |

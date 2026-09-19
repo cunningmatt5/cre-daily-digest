@@ -12,6 +12,7 @@ from urllib.parse import urljoin
 _URL_DATE_RE = re.compile(r"/(\d{4})/(\d{2})/(\d{2})/")
 
 from .config import MAX_ARTICLES_PER_SOURCE, SUMMARY_MAX_CHARS
+from .publishers import classify
 
 HEADERS = {
     "User-Agent": (
@@ -97,6 +98,20 @@ def _make_article(title, link, snippet, pub_date, pub_datetime, source, position
     }
 
 
+def _apply_access(article, source):
+    """Set ``access`` from the real publisher, and keep ``paywalled`` in sync.
+
+    Classification wins where it has an opinion. Where the publisher is unknown
+    we fall back to the source config's curated ``paywalled`` flag, so hand-won
+    knowledge about a specific feed isn't lost.
+    """
+    access = classify(article["source_name"])
+    if access == "unknown" and source.get("paywalled"):
+        access = "paywalled"
+    article["access"] = access
+    article["paywalled"] = access == "paywalled"
+
+
 def _gnews_publisher(entry):
     """Real publisher name from a Google News entry's <source> element, if any."""
     src = entry.get("source")
@@ -138,6 +153,10 @@ def fetch_rss(source):
                 article["source_short"] = pub
                 article["source_name"] = pub
 
+        # Must run AFTER the override above: before it, every wire item still
+        # carries the query's name ("CRE Headlines") rather than the outlet
+        # that actually published it.
+        _apply_access(article, source)
         articles.append(article)
 
     return articles
@@ -203,7 +222,9 @@ def scrape_headlines(source):
             snippet = meta.get("content", "") if meta else ""
         if not pub_datetime:
             pub_date, pub_datetime = _date_from_url(link)
-        articles.append(_make_article(title, link, snippet, pub_date, pub_datetime, source, i))
+        scraped = _make_article(title, link, snippet, pub_date, pub_datetime, source, i)
+        _apply_access(scraped, source)
+        articles.append(scraped)
 
     return articles
 
