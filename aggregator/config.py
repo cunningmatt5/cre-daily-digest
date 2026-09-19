@@ -237,6 +237,94 @@ SOURCES = [
         "tier_weight": 10,
         "color": GREEN,
     },
+    # ── Added 2026-09-19 after a source audit ───────────────────────────
+    # Only 6 of the previous 22 sources yielded article text: 11 were Google
+    # News proxies (thin by nature) and several direct feeds ship teasers only.
+    # Every source below was measured first for publish dates, freshness,
+    # `content:encoded` richness and body-fetchability, and rejected if it
+    # failed any of them. They are all free, directly-fetchable trade press,
+    # chosen to deepen the text supply rather than just add headline volume.
+    {
+        "name": "REBusinessOnline",
+        "short": "REBusiness",
+        # France Media's regional deal wire — highest fresh-article volume of
+        # every candidate tested, spanning all sectors.
+        "url": "https://rebusinessonline.com/feed/",
+        "method": "rss",
+        "tier_weight": 16,
+        "color": ROYAL,
+    },
+    {
+        "name": "Scotsman Guide",
+        "short": "Scotsman",
+        # CRE lending and finance. Richest feed text of any candidate (~3.1k
+        # chars of content:encoded per item).
+        "url": "https://www.scotsmanguide.com/feed/",
+        "method": "rss",
+        "tier_weight": 15,
+        "color": ROYAL,
+    },
+    {
+        "name": "Propmodo",
+        "short": "Propmodo",
+        # CRE strategy and technology; long-form, ~3.9k chars per item.
+        "url": "https://propmodo.com/feed/",
+        "method": "rss",
+        "tier_weight": 14,
+        "color": ROYAL,
+    },
+    {
+        "name": "Hotel Business",
+        "short": "HotelBiz",
+        "url": "https://hotelbusiness.com/feed/",
+        "method": "rss",
+        "tier_weight": 10,
+        "color": GREEN,
+    },
+    {
+        "name": "Yield PRO",
+        "short": "YieldPRO",
+        "url": "https://yieldpro.com/feed/",
+        "method": "rss",
+        "tier_weight": 10,
+        "color": GREEN,
+    },
+    {
+        "name": "Senior Housing News",
+        "short": "SHN",
+        # Healthcare & Life Science was the thinnest-covered sector; this feed
+        # also carries the most text per item of anything tested (~6.2k chars).
+        "url": "https://seniorhousingnews.com/feed/",
+        "method": "rss",
+        "tier_weight": 10,
+        "color": GREEN,
+    },
+    {
+        "name": "Inside Self-Storage",
+        "short": "ISS",
+        # Self storage had no coverage at all; stories land under "Other".
+        "url": "https://www.insideselfstorage.com/rss.xml",
+        "method": "rss",
+        "tier_weight": 9,
+        "color": GREEN,
+    },
+    {
+        "name": "Construction Dive",
+        "short": "ConstrDive",
+        "url": "https://www.constructiondive.com/feeds/news/",
+        "method": "rss",
+        "tier_weight": 10,
+        "color": GREEN,
+    },
+    {
+        "name": "Retail Dive",
+        "short": "RetailDive",
+        # Retailer bankruptcies and store-fleet moves drive retail CRE.
+        "url": "https://www.retaildive.com/feeds/news/",
+        "method": "rss",
+        "tier_weight": 9,
+        "color": GREEN,
+    },
     # ── Broad discovery (Google News topic queries, time-restricted) ─────
     # The recall engine: these cast a wide, fresh net across ALL outlets —
     # not just the publishers listed above — so relevant CRE news from any
@@ -322,7 +410,7 @@ DISPLAY_MIN_STORIES = int(os.environ.get("DIGEST_MIN_STORIES", "12"))
 # predictable control than the significance floor, which was retuned three times
 # (60→55→50) without settling: the floor stays as a quality gate, the count
 # decides length.
-DISPLAY_MAX_STORIES = int(os.environ.get("DIGEST_MAX_STORIES", "15"))
+DISPLAY_MAX_STORIES = int(os.environ.get("DIGEST_MAX_STORIES", "20"))
 SUMMARY_MAX_CHARS = 280
 # How much article body to hand the summarizer. ~2.5k chars is far more than
 # 4–5 sentences needs, and keeps the whole elaborate() call near 15k tokens.
