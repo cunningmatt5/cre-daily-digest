@@ -11,7 +11,8 @@ from urllib.parse import urljoin
 # Matches /YYYY/MM/DD/ in a URL path (e.g. globest.com/2026/05/01/article-title)
 _URL_DATE_RE = re.compile(r"/(\d{4})/(\d{2})/(\d{2})/")
 
-from .config import MAX_ARTICLES_PER_SOURCE, SUMMARY_MAX_CHARS
+from .config import (MAX_ARTICLES_PER_SOURCE, SUMMARY_MAX_CHARS,
+                     FULL_TEXT_MAX_CHARS)
 from .publishers import classify
 
 HEADERS = {
@@ -82,11 +83,16 @@ def _date_from_url(url: str):
     return "", None
 
 
-def _make_article(title, link, snippet, pub_date, pub_datetime, source, position):
+def _make_article(title, link, snippet, pub_date, pub_datetime, source, position,
+                  full_text=""):
     return {
         "title": title.strip(),
         "link": link.strip(),
         "summary": _truncate(snippet),
+        # Untruncated body text where the feed provides it. ``summary`` stays
+        # short for triage and the headline chip; this is the raw material the
+        # long-form summarizer works from.
+        "full_text": (full_text or "")[:FULL_TEXT_MAX_CHARS],
         "pub_date": pub_date,
         "pub_datetime": pub_datetime,
         "source_name": source["name"],
@@ -134,13 +140,24 @@ def fetch_rss(source):
         link = entry.get("link", "").strip()
         if not title or not link:
             continue
+        # `content:encoded` carries near-full article text on many feeds
+        # (CRE Daily ~4.4k chars, Trepp ~6k, Commercial Observer ~1.9k) while
+        # `summary` holds only a teaser. Read both: the rich field feeds the
+        # long-form summarizer, the teaser stays the display blurb.
         raw_summary = entry.get("summary", "") or entry.get("description", "")
         if raw_summary:
             raw_summary = BeautifulSoup(raw_summary, "lxml").get_text(" ", strip=True)
+        raw_content = ""
+        if entry.get("content"):
+            raw_content = entry["content"][0].get("value", "") or ""
+        body = raw_content or raw_summary
+        if body is raw_content and body:
+            body = BeautifulSoup(body, "lxml").get_text(" ", strip=True)
         pub_date, pub_datetime = _parse_rss_date(entry)
         if not pub_datetime:
             pub_date, pub_datetime = _date_from_url(link)
-        article = _make_article(title, link, raw_summary, pub_date, pub_datetime, source, i)
+        article = _make_article(title, link, raw_summary, pub_date, pub_datetime, source, i,
+                                full_text=body)
 
         # Google News items carry the originating outlet; surface it on the chip
         # and strip the trailing " - Publisher" that Google appends to titles.
