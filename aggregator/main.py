@@ -1,3 +1,4 @@
+import collections
 import json
 import os
 import re
@@ -252,18 +253,59 @@ def main():
 
     # Hard cap on length. With 4–5 sentence summaries each story costs roughly
     # 3x the vertical space, so depth is bought with breadth.
-    if len(display_pool) > DISPLAY_MAX_STORIES:
-        display_pool = sorted(display_pool, key=lambda x: x.get("significance", 0),
-                              reverse=True)[:DISPLAY_MAX_STORIES]
-        print(f"Story cap: showing top {DISPLAY_MAX_STORIES} by significance")
+    by_sig = sorted(display_pool, key=lambda x: x.get("significance", 0), reverse=True)
+    if len(by_sig) > DISPLAY_MAX_STORIES:
+        cut = by_sig[DISPLAY_MAX_STORIES:]
+        display_pool = by_sig[:DISPLAY_MAX_STORIES]
+        print(f"Story cap: showing top {DISPLAY_MAX_STORIES} by significance, "
+              f"cutting {len(cut)} above the floor")
+        # These cleared the quality floor and were dropped purely for length.
+        # Logging them is the only way to notice a major story being squeezed
+        # out by a crowded day.
+        for a in cut[:12]:
+            print(f"  CUT[{a.get('significance')}] [{a.get('sector')}] {a['title'][:78]!r}")
+        if len(cut) > 12:
+            print(f"  ... and {len(cut) - 12} more")
+    else:
+        display_pool = by_sig
 
-    # Wide capture, curated display: cap each sector.
+    # Curated display: cap each sector so one busy sector can't fill the email.
     sections = group_by_sector(display_pool, max_per_sector=MAX_PER_SECTOR)
     displayed = [a for _, items in sections for a in items]
+
+    # The sector cap runs after the top-N selection, so a crowded sector could
+    # both drop a high-scoring story and leave the digest short. Backfill from
+    # the next-best stories that are still under their sector's cap, highest
+    # significance first, so length is never paid for with importance.
+    if len(displayed) < DISPLAY_MAX_STORIES:
+        shown_links = {a["link"] for a in displayed}
+        per_sector = collections.Counter(a.get("sector", "Other") for a in displayed)
+        backfill = []
+        for a in by_sig:
+            if len(displayed) + len(backfill) >= DISPLAY_MAX_STORIES:
+                break
+            sector = a.get("sector", "Other")
+            if a["link"] in shown_links or per_sector[sector] >= MAX_PER_SECTOR:
+                continue
+            per_sector[sector] += 1
+            backfill.append(a)
+        if backfill:
+            print(f"Backfilled {len(backfill)} stories displaced by the sector cap")
+            sections = group_by_sector(displayed + backfill, max_per_sector=MAX_PER_SECTOR)
+            displayed = [a for _, items in sections for a in items]
+
     shown = len(displayed)
     top_stories = sorted(displayed, key=lambda x: x.get("significance", 0), reverse=True)[:5]
+    sigs = [a.get("significance", 0) for a in displayed]
     print(f"Display: {len(ranked)} ranked -> {shown} shown (floor {floor}, "
           f"max {DISPLAY_MAX_STORIES}, {MAX_PER_SECTOR}/sector)")
+    if sigs:
+        # The priority check: if the top of this list isn't the day's big news,
+        # the significance rubric is the thing to fix, not the display logic.
+        print(f"Significance of shown stories: {max(sigs)} high, {min(sigs)} low, "
+              f"median {sorted(sigs)[len(sigs)//2]}")
+        for a in sorted(displayed, key=lambda x: x.get("significance", 0), reverse=True):
+            print(f"  SHOWN[{a.get('significance')}] [{a.get('sector')}] {a['title'][:78]!r}")
 
     # Long-form pass, over the displayed stories only. `displayed` holds the same
     # dicts as `sections`, so summaries written here land in the rendered email.
