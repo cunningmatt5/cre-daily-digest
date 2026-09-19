@@ -12,7 +12,7 @@ from .feeds import fetch_all
 from .scorer import score_and_sort, group_by_sector
 from .enrich import enrich, elaborate
 from .extract import gather
-from .resolve import resolve_links
+from .resolve import resolve_links, is_google_link
 from .publishers import classify
 from .publicize import resolve_all, apply_alternate
 from .formatter import build_html_email
@@ -323,6 +323,21 @@ def main():
         still_gated = sum(1 for s in displayed if s.get("access") == "paywalled")
         print(f"Alternates confirmed: {confirmed} applied, {rejected} rejected as "
               f"not-the-same-story; {still_gated} stories remain paywalled")
+
+        # Search-found alternates carry Google News URLs, so applying one puts a
+        # bounce link back on a story that had already been resolved — on
+        # precisely the gated stories this is all meant to help. Resolve again.
+        swapped = [s for s in displayed if is_google_link(s.get("link", ""))]
+        if swapped:
+            # Re-resolving overwrites `google_link`, which the seen-URL ledger
+            # reads. Park the first-round bounce URL in cluster_links (also
+            # retired) so the original story can't come back as new tomorrow.
+            for story in swapped:
+                prior = story.get("google_link")
+                if prior:
+                    story.setdefault("cluster_links", []).append(prior)
+            again = resolve_links(swapped)
+            print(f"Alternate links resolved: {again['resolved']}/{again['attempted']}")
 
     today = date.today()
     subject = f"CRE Daily Digest — {today.strftime('%B %d, %Y')}"

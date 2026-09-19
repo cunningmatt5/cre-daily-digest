@@ -50,6 +50,12 @@ FREE_ALLOWLIST = {
     "nareit", "reit.com", "multi-housing news", "multifamily dive",
     "commercial property executive", "rebusinessonline", "the registry",
     "bizjournals", "business journal",   # local Business Journals
+    # Added with the 2026-09-19 source expansion; all verified free, dated
+    # and directly fetchable before being added as feeds.
+    "propmodo", "yield pro", "yieldpro", "hotel business",
+    "senior housing news", "inside self-storage", "insideselfstorage",
+    "construction dive", "retail dive", "multifamily dive", "hotel dive",
+    "supply chain dive", "facilitiesnet", "rebusiness",
     # Mortgage / finance trade
     "scotsman guide", "themortgagepoint", "mortgage point", "housingwire",
     "national mortgage news",
