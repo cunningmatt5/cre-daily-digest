@@ -12,6 +12,8 @@ from .feeds import fetch_all
 from .scorer import score_and_sort, group_by_sector
 from .enrich import enrich, elaborate
 from .extract import gather
+from .resolve import resolve_links
+from .publishers import classify
 from .formatter import build_html_email
 from .email_sender import send_gmail
 
@@ -111,6 +113,27 @@ def _is_non_article(article) -> bool:
 
 def _has_no_date(article) -> bool:
     return article.get("pub_datetime") is None
+
+
+def _refine_access_from_domain(article) -> bool:
+    """Use the resolved domain to settle access when the publisher name didn't.
+
+    Publisher names from Google News are inconsistent ("WSJ", "wsj.com", "Wall
+    Street Journal") and unfamiliar outlets classify as unknown. The domain is
+    a second, cleaner signal — but only trusted to *add* information, never to
+    override a confident name match.
+    """
+    if article.get("access") != "unknown":
+        return False
+    domain = urlparse(article.get("link", "")).netloc.lower()
+    if not domain:
+        return False
+    verdict = classify(domain)
+    if verdict == "unknown":
+        return False
+    article["access"] = verdict
+    article["paywalled"] = verdict == "paywalled"
+    return True
 
 
 def load_seen_urls() -> set:
@@ -244,6 +267,22 @@ def main():
     # Long-form pass, over the displayed stories only. `displayed` holds the same
     # dicts as `sections`, so summaries written here land in the rendered email.
     if enriched and displayed:
+        # Turn Google News bounce links into real publisher URLs. Done for the
+        # displayed stories only — it costs two requests per link, and these are
+        # the only links a reader will ever click. Wins: a direct link instead of
+        # a Google interstitial, a real domain to sanity-check access against,
+        # and an article we can actually fetch to summarize.
+        link_stats = resolve_links(displayed)
+        if link_stats["attempted"]:
+            print(f"Link resolution: {link_stats['resolved']}/{link_stats['attempted']} "
+                  f"Google News links resolved to publisher URLs")
+        refined = 0
+        for story in displayed:
+            if story.get("google_link"):
+                refined += _refine_access_from_domain(story)
+        if refined:
+            print(f"Access refined from resolved domain: {refined} stories")
+
         origins = gather(displayed)
         print(f"Source text: {origins['feed']} from feed, {origins['body']} fetched, "
               f"{origins['thin']} thin (headline only)")
@@ -274,6 +313,11 @@ def main():
     for a in displayed:
         for link in a.get("cluster_links") or []:
             sent_links.add(link.rstrip("/"))
+        # A resolved story is keyed on its publisher URL, but tomorrow's fetch
+        # produces the Google News URL again. Retire both, or every resolved
+        # story comes back as new.
+        if a.get("google_link"):
+            sent_links.add(a["google_link"].rstrip("/"))
     save_seen_urls(sorted(sent_links))
     print(f"Seen URLs updated ({len(sent_links)} links from {len(displayed)} shown stories; "
           f"{len(ranked) - len(displayed)} unshown stories left eligible for tomorrow).")
