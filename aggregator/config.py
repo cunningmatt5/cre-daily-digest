@@ -109,22 +109,14 @@ SOURCES = [
         "color": NAVY,
         "paywalled": True,
     },
-    {
-        "name": "CBRE Research",
-        "short": "CBRE",
-        "url": "https://www.cbre.com/insights/articles",
-        "method": "scrape",
-        "tier_weight": 26,
-        "color": NAVY,
-    },
-    {
-        "name": "JLL Research",
-        "short": "JLL",
-        "url": "https://www.jll.com/en/trends-and-insights/research",
-        "method": "scrape",
-        "tier_weight": 26,
-        "color": NAVY,
-    },
+    # NOTE: CBRE Research and JLL Research were removed 2026-09-19. Their
+    # listing AND article pages publish no date in any form — no <time>, no
+    # article:published_time, no JSON-LD datePublished — so every item they
+    # produced was (correctly) discarded by the no-date filter. They had been
+    # contributing exactly zero stories. Google News `site:` proxies for both
+    # return job postings and property listings rather than research, so there
+    # is no dated substitute. Both firms' newsworthy activity is still captured
+    # by the "CRE Major Players" discovery query below, which names them.
     # ── Tier 2 ──────────────────────────────────────────────────────────
     {
         "name": "GlobeStreet",
@@ -154,8 +146,9 @@ SOURCES = [
     {
         "name": "The Real Deal",
         "short": "Real Deal",
-        # National feed confirmed working (10 items)
-        "url": "https://therealdeal.com/national/feed/",
+        # The /national/feed/ endpoint went dead (returns 0 entries, silently).
+        # Google News surfaces therealdeal.com articles with real publish dates.
+        "url": gnews("site:therealdeal.com", days=2),
         "method": "rss",
         "tier_weight": 18,
         "color": ROYAL,
@@ -163,8 +156,10 @@ SOURCES = [
     {
         "name": "Trepp",
         "short": "Trepp",
-        "url": "https://www.trepp.com/trepptalk",
-        "method": "scrape",
+        # The TreppTalk page declares this feed in its own <link rel="alternate">;
+        # scraping the HTML yielded no dates, so every item was being filtered out.
+        "url": "https://www.trepp.com/trepptalk/rss.xml",
+        "method": "rss",
         "tier_weight": 18,
         "color": ROYAL,
     },
@@ -186,14 +181,8 @@ SOURCES = [
         "tier_weight": 15,
         "color": ROYAL,
     },
-    {
-        "name": "Marcus & Millichap",
-        "short": "M&M",
-        "url": "https://www.marcusmillichap.com/research",
-        "method": "scrape",
-        "tier_weight": 14,
-        "color": ROYAL,
-    },
+    # NOTE: Marcus & Millichap removed 2026-09-19 — same undated-source problem
+    # as CBRE/JLL above, and its listing page yielded only a nav link anyway.
     # ── Tier 3 ──────────────────────────────────────────────────────────
     {
         "name": "CRE Daily Multifamily",
@@ -228,14 +217,9 @@ SOURCES = [
         "tier_weight": 10,
         "color": GREEN,
     },
-    {
-        "name": "NMHC",
-        "short": "NMHC",
-        "url": "https://www.nmhc.org/news/",
-        "method": "scrape",
-        "tier_weight": 10,
-        "color": GREEN,
-    },
+    # NOTE: NMHC removed 2026-09-19 — undated, no feed, and a `site:nmhc.org`
+    # Google News proxy returns nothing at all. Multifamily coverage is carried
+    # by CRE Daily Multifamily and the sector discovery query.
     {
         "name": "Nareit",
         "short": "Nareit",

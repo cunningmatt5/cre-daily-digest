@@ -243,8 +243,20 @@ def main():
 
     send_gmail(html, subject)
 
-    save_seen_urls([a["link"].rstrip("/") for a in ranked])
-    print("Seen URLs updated.")
+    # Retire only what the reader actually saw, plus the other outlets' versions
+    # of those same stories. Previously every *ranked* story was retired, which
+    # permanently buried anything the significance floor hid — ~48 stories a day
+    # that were never shown to anyone. A story held back today can now resurface
+    # tomorrow if it still matters; the age filter (MAX_AGE_DAYS) bounds how long
+    # it can keep recirculating, so nothing stale leaks back in.
+    displayed = [a for _, items in sections for a in items]
+    sent_links = {a["link"].rstrip("/") for a in displayed}
+    for a in displayed:
+        for link in a.get("cluster_links") or []:
+            sent_links.add(link.rstrip("/"))
+    save_seen_urls(sorted(sent_links))
+    print(f"Seen URLs updated ({len(sent_links)} links from {len(displayed)} shown stories; "
+          f"{len(ranked) - len(displayed)} unshown stories left eligible for tomorrow).")
 
 
 if __name__ == "__main__":

@@ -127,6 +127,45 @@ def _call_model(articles):
     return json.loads(text)
 
 
+# The model must return at least this fraction of the articles it was given.
+# A smaller result means the response was truncated, and shipping it produces a
+# near-empty digest (on 2026-09-06 a run returned 1 article out of 77 and the
+# digest went out with a single story). Treated as a hard failure, not a warning.
+MIN_RETURN_RATIO = 0.6
+_MAX_ATTEMPTS = 2
+
+
+def _call_with_retry(articles):
+    """Return usable model output, or ``None`` if every attempt failed.
+
+    Retries once on either an API error or a truncated response — truncation has
+    been transient in practice, so a second call usually succeeds and is far
+    cheaper than degrading the whole digest to the deterministic scorer.
+    """
+    need = MIN_RETURN_RATIO * len(articles)
+    problem = "no attempt made"
+    for attempt in range(1, _MAX_ATTEMPTS + 1):
+        try:
+            data = _call_model(articles)
+        except Exception as exc:  # noqa: BLE001 — any failure is retried, then degrades
+            problem = f"{type(exc).__name__}: {exc}"
+            print(f"Enrichment attempt {attempt}/{_MAX_ATTEMPTS} errored ({problem}).",
+                  file=sys.stderr)
+            continue
+        returned = len(data.get("articles") or [])
+        if returned >= need:
+            if attempt > 1:
+                print(f"Enrichment recovered on attempt {attempt} "
+                      f"({returned}/{len(articles)} articles).", file=sys.stderr)
+            return data
+        problem = f"returned {returned} of {len(articles)} articles (need >= {need:.0f})"
+        print(f"Enrichment attempt {attempt}/{_MAX_ATTEMPTS} truncated — {problem}.",
+              file=sys.stderr)
+    print(f"Enrichment unusable after {_MAX_ATTEMPTS} attempts ({problem}); "
+          f"falling back to deterministic scorer.", file=sys.stderr)
+    return None
+
+
 def enrich(articles):
     """Return ``(lead, ranked_articles)`` or ``None`` to signal fallback.
 
@@ -138,18 +177,12 @@ def enrich(articles):
     if not articles:
         return None
 
-    try:
-        data = _call_model(articles)
-    except Exception as exc:  # noqa: BLE001 — any failure degrades to fallback
-        print(f"Enrichment unavailable ({type(exc).__name__}: {exc}); "
-              f"falling back to deterministic scorer.", file=sys.stderr)
+    data = _call_with_retry(articles)
+    if data is None:
         return None
 
     lead = (data.get("lead") or "").strip()
     enriched = data.get("articles") or []
-    if len(enriched) < 0.6 * len(articles):
-        print(f"WARNING: model returned {len(enriched)} of {len(articles)} articles — "
-              f"possible output truncation.", file=sys.stderr)
 
     # Group kept articles by cluster; track what the model dropped.
     clusters = {}
@@ -193,6 +226,9 @@ def enrich(articles):
                 seen.add(s)
                 also.append(s)
         a["also_sources"] = also
+        # Every URL in this cluster, so that displaying the canonical story also
+        # retires the other outlets' versions of it (see save_seen_urls).
+        a["cluster_links"] = [m["article"]["link"] for m in members]
         ranked.append(a)
 
     ranked.sort(key=lambda x: x["significance"], reverse=True)
