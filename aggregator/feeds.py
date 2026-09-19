@@ -1,5 +1,6 @@
 import feedparser
 import re
+import socket
 import sys
 import time
 import requests
@@ -16,8 +17,10 @@ from .config import (MAX_ARTICLES_PER_SOURCE, SUMMARY_MAX_CHARS,
 from .publishers import classify
 
 # Every outbound fetch is bounded. Without this a single slow server could hang
-# a worker until GitHub's 6-hour job ceiling.
+# a worker until GitHub's 6-hour job ceiling. The socket default covers
+# feedparser's own fetch, which takes no timeout argument.
 FEED_TIMEOUT = 15
+socket.setdefaulttimeout(FEED_TIMEOUT)
 
 HEADERS = {
     "User-Agent": (
@@ -131,16 +134,31 @@ def _gnews_publisher(entry):
     return (title or "").strip()
 
 
+def _parse_feed(url):
+    """Fetch and parse a feed, with a timeout and visible errors.
+
+    Prefer requests: it gives an explicit timeout and a real exception on HTTP
+    errors, where ``feedparser.parse(url)`` silently returns an empty feed —
+    that silence is how The Real Deal's dead feed went unnoticed.
+
+    Some publishers reject our browser User-Agent while accepting feedparser's
+    (Lodging Magazine 403s from CI with ours), so fall back to feedparser's own
+    fetch rather than losing the source. The module-level socket timeout keeps
+    that path bounded too.
+    """
+    try:
+        response = requests.get(url, headers=HEADERS, timeout=FEED_TIMEOUT)
+        response.raise_for_status()
+        return feedparser.parse(response.content)
+    except Exception:
+        feed = feedparser.parse(url)
+        if feed.entries:
+            return feed
+        raise  # neither route worked — let _fetch_one retry and report it
+
+
 def fetch_rss(source):
-    # Fetch with requests rather than letting feedparser do it. Three reasons:
-    # feedparser.parse(url) has no timeout and will hang a worker indefinitely
-    # on a slow server; it sends its own User-Agent, which some feeds reject;
-    # and swallowing the error here meant a dead feed logged as "0 articles"
-    # instead of FAILED, which is how The Real Deal's feed died unnoticed.
-    # Errors now propagate to _fetch_one, which retries and reports them.
-    response = requests.get(source["url"], headers=HEADERS, timeout=FEED_TIMEOUT)
-    response.raise_for_status()
-    feed = feedparser.parse(response.content)
+    feed = _parse_feed(source["url"])
 
     is_gnews = "news.google.com" in source["url"]
     articles = []
