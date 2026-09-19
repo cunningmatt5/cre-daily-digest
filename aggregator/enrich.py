@@ -200,9 +200,16 @@ def enrich(articles):
         if not valid:
             continue
         sector = e.get("sector") if e.get("sector") in SECTORS else "Other"
+        # A non-numeric or null significance would raise here. The whole point
+        # of this module is that the digest always sends, so a malformed field
+        # costs one story, not the run.
+        try:
+            significance = int(e.get("significance", 0))
+        except (TypeError, ValueError):
+            significance = 0
         item = {
             "article": articles[idx],
-            "significance": int(e.get("significance", 0)),
+            "significance": significance,
             "sector": sector,
             "summary": (e.get("summary") or "").strip(),
         }

@@ -15,6 +15,10 @@ from .config import (MAX_ARTICLES_PER_SOURCE, SUMMARY_MAX_CHARS,
                      FULL_TEXT_MAX_CHARS)
 from .publishers import classify
 
+# Every outbound fetch is bounded. Without this a single slow server could hang
+# a worker until GitHub's 6-hour job ceiling.
+FEED_TIMEOUT = 15
+
 HEADERS = {
     "User-Agent": (
         "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
@@ -128,10 +132,15 @@ def _gnews_publisher(entry):
 
 
 def fetch_rss(source):
-    try:
-        feed = feedparser.parse(source["url"])
-    except Exception:
-        return []
+    # Fetch with requests rather than letting feedparser do it. Three reasons:
+    # feedparser.parse(url) has no timeout and will hang a worker indefinitely
+    # on a slow server; it sends its own User-Agent, which some feeds reject;
+    # and swallowing the error here meant a dead feed logged as "0 articles"
+    # instead of FAILED, which is how The Real Deal's feed died unnoticed.
+    # Errors now propagate to _fetch_one, which retries and reports them.
+    response = requests.get(source["url"], headers=HEADERS, timeout=FEED_TIMEOUT)
+    response.raise_for_status()
+    feed = feedparser.parse(response.content)
 
     is_gnews = "news.google.com" in source["url"]
     articles = []
@@ -272,6 +281,7 @@ def fetch_all(sources, max_workers=8):
     the run — a dead source just contributes nothing.
     """
     articles = []
+    failed, empty = [], []
     with ThreadPoolExecutor(max_workers=max_workers) as pool:
         futures = {pool.submit(_fetch_one, s): s for s in sources}
         for future in as_completed(futures):
@@ -280,6 +290,20 @@ def fetch_all(sources, max_workers=8):
                 fetched = future.result()
                 print(f"  [{source['name']}] {len(fetched)} articles")
                 articles.extend(fetched)
+                if not fetched:
+                    empty.append(source["name"])
             except Exception as exc:  # noqa: BLE001
+                failed.append(f"{source['name']} ({type(exc).__name__})")
                 print(f"  [{source['name']}] FAILED: {exc}", file=sys.stderr)
+
+    # With 31 sources a dead feed is easy to miss in the per-source lines.
+    # "Failed" means the fetch errored; "empty" means it answered with nothing,
+    # which is normal for a low-cadence source like Nareit but suspicious if it
+    # persists. Keeping them apart is what makes a real breakage visible.
+    print(f"Source health: {len(sources) - len(failed) - len(empty)} ok, "
+          f"{len(failed)} failed, {len(empty)} empty")
+    if failed:
+        print(f"  FAILED: {', '.join(sorted(failed))}", file=sys.stderr)
+    if empty:
+        print(f"  EMPTY: {', '.join(sorted(empty))}")
     return articles

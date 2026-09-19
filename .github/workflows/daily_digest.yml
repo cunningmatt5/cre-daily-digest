@@ -38,6 +38,9 @@ permissions:
 jobs:
   send-digest:
     runs-on: ubuntu-latest
+    # A healthy run takes ~3 minutes. Without a ceiling a hung fetch or a
+    # stalled API call would burn up to GitHub's 6-hour default.
+    timeout-minutes: 20
 
     steps:
       - name: Checkout repo
