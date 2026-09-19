@@ -10,6 +10,7 @@ import json
 import sys
 
 from .config import LLM_MODEL, SECTORS, MAX_TOTAL_ARTICLES
+from .publishers import is_content_farm
 
 # Per-article fields the model returns. Numeric bounds are described in prose
 # (the prompt), not as JSON-Schema min/max — structured outputs ignore those.
@@ -213,7 +214,13 @@ def enrich(articles):
 
     ranked = []
     for members in clusters.values():
-        members.sort(key=lambda m: m["significance"], reverse=True)
+        # Highest significance wins, but never let a content farm represent a
+        # story a real outlet also covered — farms are rewrites, and their
+        # byline would front the email. They stay in the cluster (so their
+        # URL is still retired) and can still be the canonical if nothing
+        # else covered the story at all.
+        members.sort(key=lambda m: (not is_content_farm(m["article"].get("source_name")),
+                                    m["significance"]), reverse=True)
         canonical = members[0]
         a = dict(canonical["article"])
         a["significance"] = canonical["significance"]
@@ -231,6 +238,22 @@ def enrich(articles):
         # Every URL in this cluster, so that displaying the canonical story also
         # retires the other outlets' versions of it (see save_seen_urls).
         a["cluster_links"] = [m["article"]["link"] for m in members]
+        # The other outlets' actual articles, not just their names. A cluster
+        # member from a directly-fetchable free outlet can supply both a public
+        # link and real body text for a story whose canonical is paywalled —
+        # the cheapest fix available, since it costs no extra requests.
+        a["cluster_members"] = [
+            {
+                "link": m["article"].get("link", ""),
+                "title": m["article"].get("title", ""),
+                "source_name": m["article"].get("source_name", ""),
+                "source_short": m["article"].get("source_short", ""),
+                "access": m["article"].get("access", "unknown"),
+                "full_text": m["article"].get("full_text", ""),
+                "summary": m["article"].get("summary", ""),
+            }
+            for m in members[1:]
+        ]
         ranked.append(a)
 
     ranked.sort(key=lambda x: x["significance"], reverse=True)
@@ -259,8 +282,9 @@ _ELABORATE_SCHEMA = {
                 "properties": {
                     "id": {"type": "integer"},
                     "summary_long": {"type": "string"},
+                    "alternate_ok": {"type": "boolean"},
                 },
-                "required": ["id", "summary_long"],
+                "required": ["id", "summary_long", "alternate_ok"],
                 "additionalProperties": False,
             },
         },
@@ -293,6 +317,19 @@ Do not pad to reach a length. A short accurate summary is a success, not a failu
 development underscores", no closing editorial flourish.
 - Never begin with the outlet's name.
 
+Some articles include a [CANDIDATE ALTERNATE SOURCE]. The reader cannot open the \
+original, so we want to link them to this other outlet's coverage instead — but \
+only if it genuinely reports the SAME underlying event.
+
+For each article set "alternate_ok":
+- true only when the candidate covers the same specific event as the headline: \
+the same deal, same parties, same property, same announcement.
+- false when it merely shares a topic, covers a different transaction by the same \
+firm, or is a roundup that happens to mention it. A keyword search produced these, \
+so topical near-misses are common and sending the reader to the wrong article is \
+worse than sending them to a paywall.
+- false when no candidate is shown. Default to false whenever you are unsure.
+
 Also write a "lead": a 2–3 sentence editor's brief on the day's most important CRE \
 themes, referencing the specific stories below. Punchy and concrete.
 
@@ -311,6 +348,13 @@ def _build_elaborate_input(stories):
             lines.append(f"    [THIN SOURCE TEXT] {text or '(headline only)'}")
         else:
             lines.append(f"    SOURCE TEXT: {text}")
+        alt = a.get("public_alt")
+        if alt and not a.get("alt_confirmed"):
+            blurb = (alt.get("summary") or "")[:200]
+            lines.append(f"    [CANDIDATE ALTERNATE SOURCE] ({alt.get('source_name','?')}) "
+                         f"{alt.get('title','')}")
+            if blurb:
+                lines.append(f"      {blurb}")
     return "\n".join(lines)
 
 
@@ -337,10 +381,15 @@ def elaborate(stories):
         idx = item.get("id")
         if not isinstance(idx, int) or not 0 <= idx < len(stories):
             continue
+        story = stories[idx]
         text = (item.get("summary_long") or "").strip()
         if text:
-            stories[idx]["summary"] = text
+            story["summary"] = text
             written += 1
+        # Only meaningful for unconfirmed (search-found) candidates; cluster
+        # alternates were applied earlier and carry alt_confirmed already.
+        if story.get("public_alt") and not story.get("alt_confirmed"):
+            story["alt_confirmed"] = bool(item.get("alternate_ok"))
 
     thin = sum(1 for s in stories if s.get("text_thin"))
     print(f"Long-form summaries: {written}/{len(stories)} written "

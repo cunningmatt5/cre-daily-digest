@@ -21,6 +21,15 @@ def _esc(text):
     return (text or "").replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;")
 
 
+def _esc_attr(url):
+    """Escape a URL for use inside a double-quoted HTML attribute.
+
+    Links now include search-derived alternates, so a stray quote is no longer
+    only a theoretical way to break out of the href.
+    """
+    return _esc(url).replace('"', "&quot;")
+
+
 def _sector_color(sector):
     return SECTOR_COLORS.get(sector, META)
 
@@ -36,6 +45,11 @@ def _meta_line(article, sector=None):
     parts.append(
         f'<span style="color:{INK};font-weight:700;">{_esc(article["source_short"])}</span>'
     )
+    # When the link was swapped to a freely readable outlet, credit whoever
+    # actually broke the story rather than silently dropping them.
+    original = article.get("original_source")
+    if original:
+        parts.append(f'<span style="color:{META};">originally {_esc(original)}</span>')
     also = article.get("also_sources") or []
     if also:
         names = ", ".join(_esc(s) for s in also[:2])
@@ -64,7 +78,7 @@ def _top_pill():
 # ── Hero: Top Stories ────────────────────────────────────────────────────────
 def _hero_item(article, rank, last):
     title = _esc(article["title"])
-    link = article["link"]
+    link = _esc_attr(article["link"])
     border = "" if last else f"border-bottom:1px solid {SOFT};"
     return f"""<tr>
       <td style="width:34px;padding:11px 0;vertical-align:top;{border}">
@@ -99,7 +113,7 @@ def _hero(top_stories):
 def _story_row(article, color, first, is_top):
     title = _esc(article["title"])
     summary = _esc(article.get("summary", ""))
-    link = article["link"]
+    link = _esc_attr(article["link"])
     border = "" if first else f"border-top:1px solid {SOFT};"
     tag = _top_pill() if is_top else ""
     # Summaries are now 4–5 sentences rather than one, so they carry a little

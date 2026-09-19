@@ -14,6 +14,7 @@ from .enrich import enrich, elaborate
 from .extract import gather
 from .resolve import resolve_links
 from .publishers import classify
+from .publicize import resolve_all, apply_alternate
 from .formatter import build_html_email
 from .email_sender import send_gmail
 
@@ -283,12 +284,45 @@ def main():
         if refined:
             print(f"Access refined from resolved domain: {refined} stories")
 
+        # Find a freely readable source for gated stories. Runs after link
+        # resolution so `access` reflects the real domain, and so candidates can
+        # be ranked on whether their URL is actually fetchable. Cluster
+        # candidates are same-story by construction (triage grouped them), so
+        # they apply immediately — and bring their text with them. Search
+        # candidates are unverified and wait for the model to confirm.
+        alt_stats = resolve_all(displayed)
+        applied_now = 0
+        for story in displayed:
+            alt = story.get("public_alt")
+            if alt and alt.get("origin") == "cluster":
+                story["alt_confirmed"] = True
+                applied_now += apply_alternate(story)
+        print(f"Public sources: {alt_stats['gated']} gated -> "
+              f"{alt_stats['cluster']} from cluster ({applied_now} applied), "
+              f"{alt_stats['search']} pending confirmation, {alt_stats['none']} none found "
+              f"({alt_stats['fetchable']} fetchable)")
+
         origins = gather(displayed)
         print(f"Source text: {origins['feed']} from feed, {origins['body']} fetched, "
               f"{origins['thin']} thin (headline only)")
+
         fresh_lead = elaborate(displayed)
         if fresh_lead:
             lead = fresh_lead
+
+        # Apply the alternates the model confirmed; drop the ones it rejected.
+        confirmed = rejected = 0
+        for story in displayed:
+            if not story.get("public_alt") or story.get("link") == story["public_alt"]["link"]:
+                continue
+            if story.get("alt_confirmed"):
+                confirmed += apply_alternate(story)
+            else:
+                rejected += 1
+                story.pop("public_alt", None)
+        still_gated = sum(1 for s in displayed if s.get("access") == "paywalled")
+        print(f"Alternates confirmed: {confirmed} applied, {rejected} rejected as "
+              f"not-the-same-story; {still_gated} stories remain paywalled")
 
     today = date.today()
     subject = f"CRE Daily Digest — {today.strftime('%B %d, %Y')}"
