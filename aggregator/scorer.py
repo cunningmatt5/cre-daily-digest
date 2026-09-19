@@ -205,6 +205,7 @@ def score_and_sort(articles):
                 seen_src.add(s)
                 also.append(s)
         canonical["also_sources"] = also
+        canonical["cluster_links"] = [m["link"] for m in members]
         ranked.append(canonical)
 
     ranked.sort(key=lambda x: x["significance"], reverse=True)
