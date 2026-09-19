@@ -102,9 +102,11 @@ def _story_row(article, color, first, is_top):
     link = article["link"]
     border = "" if first else f"border-top:1px solid {SOFT};"
     tag = _top_pill() if is_top else ""
+    # Summaries are now 4–5 sentences rather than one, so they carry a little
+    # more leading and top margin to stay readable as a paragraph.
     summary_html = (
-        f'<div style="margin-top:5px;color:{BODY};font-size:13.5px;'
-        f'line-height:1.55;font-family:{FONT};">{summary}</div>'
+        f'<div style="margin-top:7px;color:{BODY};font-size:13.5px;'
+        f'line-height:1.62;font-family:{FONT};">{summary}</div>'
         if summary else ""
     )
     return f"""<tr><td style="padding:13px 0 13px 14px;border-left:3px solid {color};{border}">

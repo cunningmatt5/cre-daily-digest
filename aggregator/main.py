@@ -7,10 +7,11 @@ from pathlib import Path
 from urllib.parse import urlparse
 
 from .config import (SOURCES, MAX_PER_SECTOR, DISPLAY_MIN_SIGNIFICANCE,
-                     DISPLAY_MIN_STORIES)
+                     DISPLAY_MIN_STORIES, DISPLAY_MAX_STORIES)
 from .feeds import fetch_all
 from .scorer import score_and_sort, group_by_sector
-from .enrich import enrich
+from .enrich import enrich, elaborate
+from .extract import gather
 from .formatter import build_html_email
 from .email_sender import send_gmail
 
@@ -225,11 +226,30 @@ def main():
             print(f"Significance floor ({floor}) left only {len(kept)} (< {DISPLAY_MIN_STORIES}); "
                   f"showing top {len(display_pool)} by significance instead.")
 
+    # Hard cap on length. With 4–5 sentence summaries each story costs roughly
+    # 3x the vertical space, so depth is bought with breadth.
+    if len(display_pool) > DISPLAY_MAX_STORIES:
+        display_pool = sorted(display_pool, key=lambda x: x.get("significance", 0),
+                              reverse=True)[:DISPLAY_MAX_STORIES]
+        print(f"Story cap: showing top {DISPLAY_MAX_STORIES} by significance")
+
     # Wide capture, curated display: cap each sector.
-    top_stories = sorted(ranked, key=lambda x: x.get("significance", 0), reverse=True)[:5]
     sections = group_by_sector(display_pool, max_per_sector=MAX_PER_SECTOR)
-    shown = sum(len(items) for _, items in sections)
-    print(f"Display: {len(ranked)} ranked -> {shown} shown (floor {floor}, {MAX_PER_SECTOR}/sector)")
+    displayed = [a for _, items in sections for a in items]
+    shown = len(displayed)
+    top_stories = sorted(displayed, key=lambda x: x.get("significance", 0), reverse=True)[:5]
+    print(f"Display: {len(ranked)} ranked -> {shown} shown (floor {floor}, "
+          f"max {DISPLAY_MAX_STORIES}, {MAX_PER_SECTOR}/sector)")
+
+    # Long-form pass, over the displayed stories only. `displayed` holds the same
+    # dicts as `sections`, so summaries written here land in the rendered email.
+    if enriched and displayed:
+        origins = gather(displayed)
+        print(f"Source text: {origins['feed']} from feed, {origins['body']} fetched, "
+              f"{origins['thin']} thin (headline only)")
+        fresh_lead = elaborate(displayed)
+        if fresh_lead:
+            lead = fresh_lead
 
     today = date.today()
     subject = f"CRE Daily Digest — {today.strftime('%B %d, %Y')}"

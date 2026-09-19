@@ -316,4 +316,17 @@ DISPLAY_MIN_SIGNIFICANCE = int(os.environ.get("DIGEST_MIN_SIG", "50"))
 # news day or a compressed score distribution), show the top N by significance
 # instead, so the digest is never near-empty.
 DISPLAY_MIN_STORIES = int(os.environ.get("DIGEST_MIN_STORIES", "12"))
+# Hard cap on how many stories the email shows. With 4–5 sentence summaries the
+# email is roughly 3x longer per story, so breadth has to give way to depth —
+# the goal is a brief you read end to end without clicking. This is also a more
+# predictable control than the significance floor, which was retuned three times
+# (60→55→50) without settling: the floor stays as a quality gate, the count
+# decides length.
+DISPLAY_MAX_STORIES = int(os.environ.get("DIGEST_MAX_STORIES", "15"))
 SUMMARY_MAX_CHARS = 280
+# How much article body to hand the summarizer. ~2.5k chars is far more than
+# 4–5 sentences needs, and keeps the whole elaborate() call near 15k tokens.
+FULL_TEXT_MAX_CHARS = 2500
+# Below this, a story has too little source material to summarize at length;
+# the model is told to write fewer sentences rather than invent detail.
+THIN_TEXT_CHARS = 400

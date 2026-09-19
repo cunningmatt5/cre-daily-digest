@@ -100,14 +100,10 @@ def _build_input(articles):
     return "\n".join(lines)
 
 
-def _call_model(articles):
+def _call_model(user, system, schema, max_tokens=32000):
     import anthropic
 
     client = anthropic.Anthropic()
-    user = (
-        "Here are today's candidate CRE articles. Process every one per your "
-        "instructions.\n\n" + _build_input(articles)
-    )
     # Bulk classification against an explicit rubric — not deep reasoning.
     # Extended thinking would consume the token budget and starve the JSON
     # output (it once truncated 127 articles down to 2). Disable it and give
@@ -115,10 +111,10 @@ def _call_model(articles):
     # response, so no reasoning can leak into the text.
     with client.messages.stream(
         model=LLM_MODEL,
-        max_tokens=32000,
+        max_tokens=max_tokens,
         thinking={"type": "disabled"},
-        output_config={"format": {"type": "json_schema", "schema": _SCHEMA}},
-        system=_SYSTEM,
+        output_config={"format": {"type": "json_schema", "schema": schema}},
+        system=system,
         messages=[{"role": "user", "content": user}],
     ) as stream:
         message = stream.get_final_message()
@@ -135,34 +131,35 @@ MIN_RETURN_RATIO = 0.6
 _MAX_ATTEMPTS = 2
 
 
-def _call_with_retry(articles):
+def _call_with_retry(user, system, schema, expected, label="Enrichment",
+                     max_tokens=32000):
     """Return usable model output, or ``None`` if every attempt failed.
 
     Retries once on either an API error or a truncated response — truncation has
     been transient in practice, so a second call usually succeeds and is far
     cheaper than degrading the whole digest to the deterministic scorer.
     """
-    need = MIN_RETURN_RATIO * len(articles)
+    need = MIN_RETURN_RATIO * expected
     problem = "no attempt made"
     for attempt in range(1, _MAX_ATTEMPTS + 1):
         try:
-            data = _call_model(articles)
+            data = _call_model(user, system, schema, max_tokens)
         except Exception as exc:  # noqa: BLE001 — any failure is retried, then degrades
             problem = f"{type(exc).__name__}: {exc}"
-            print(f"Enrichment attempt {attempt}/{_MAX_ATTEMPTS} errored ({problem}).",
+            print(f"{label} attempt {attempt}/{_MAX_ATTEMPTS} errored ({problem}).",
                   file=sys.stderr)
             continue
         returned = len(data.get("articles") or [])
         if returned >= need:
             if attempt > 1:
-                print(f"Enrichment recovered on attempt {attempt} "
-                      f"({returned}/{len(articles)} articles).", file=sys.stderr)
+                print(f"{label} recovered on attempt {attempt} "
+                      f"({returned}/{expected} articles).", file=sys.stderr)
             return data
-        problem = f"returned {returned} of {len(articles)} articles (need >= {need:.0f})"
-        print(f"Enrichment attempt {attempt}/{_MAX_ATTEMPTS} truncated — {problem}.",
+        problem = f"returned {returned} of {expected} articles (need >= {need:.0f})"
+        print(f"{label} attempt {attempt}/{_MAX_ATTEMPTS} truncated — {problem}.",
               file=sys.stderr)
-    print(f"Enrichment unusable after {_MAX_ATTEMPTS} attempts ({problem}); "
-          f"falling back to deterministic scorer.", file=sys.stderr)
+    print(f"{label} unusable after {_MAX_ATTEMPTS} attempts ({problem}).",
+          file=sys.stderr)
     return None
 
 
@@ -177,8 +174,13 @@ def enrich(articles):
     if not articles:
         return None
 
-    data = _call_with_retry(articles)
+    user = (
+        "Here are today's candidate CRE articles. Process every one per your "
+        "instructions.\n\n" + _build_input(articles)
+    )
+    data = _call_with_retry(user, _SYSTEM, _SCHEMA, len(articles), label="Enrichment")
     if data is None:
+        print("Falling back to deterministic scorer.", file=sys.stderr)
         return None
 
     lead = (data.get("lead") or "").strip()
@@ -239,3 +241,108 @@ def enrich(articles):
     for t in dropped_titles[:25]:
         print(f"  DROPPED(keep=false) {t[:90]!r}")
     return lead, ranked
+
+
+# ── Stage 2: long-form summaries ─────────────────────────────────────────────
+# Run over the display set only (~15 stories), never the full pool. Writing
+# 4–5 sentences for all ~90 ranked stories would triple output tokens and
+# re-create the truncation that shipped a one-story digest on 2026-09-06.
+
+_ELABORATE_SCHEMA = {
+    "type": "object",
+    "properties": {
+        "lead": {"type": "string"},
+        "articles": {
+            "type": "array",
+            "items": {
+                "type": "object",
+                "properties": {
+                    "id": {"type": "integer"},
+                    "summary_long": {"type": "string"},
+                },
+                "required": ["id", "summary_long"],
+                "additionalProperties": False,
+            },
+        },
+    },
+    "required": ["lead", "articles"],
+    "additionalProperties": False,
+}
+
+_ELABORATE_SYSTEM = """You are the editor of a commercial real estate (CRE) daily \
+news digest read by institutional investors, brokers, and lenders. These are the \
+stories selected for today's edition. For each one, write the summary that appears \
+in the email.
+
+The reader should be able to finish your summary and understand the story without \
+opening the link. Many of these articles sit behind paywalls they cannot read, so \
+your summary is often the only version they get.
+
+For each article write "summary_long":
+
+- Normally 4–5 sentences. Lead with what happened, then the specifics that matter \
+to a CRE professional — dollar amounts, parties, asset type, location, square \
+footage, cap rates, timing — then why it matters for the market.
+- Write ONLY from the SOURCE TEXT provided. Do not add background, context, \
+figures, or consequences that are not in that text. You have no other knowledge \
+of this story, and a confident invented detail is worse than a short summary.
+- When an article is marked [THIN SOURCE TEXT], you have only a headline and \
+perhaps one line. Write 1–2 sentences covering just what that supports, and STOP. \
+Do not pad to reach a length. A short accurate summary is a success, not a failure.
+- Plain declarative prose. No hype, no "the article discusses", no "this \
+development underscores", no closing editorial flourish.
+- Never begin with the outlet's name.
+
+Also write a "lead": a 2–3 sentence editor's brief on the day's most important CRE \
+themes, referencing the specific stories below. Punchy and concrete.
+
+Return every input article id exactly once."""
+
+
+def _build_elaborate_input(stories):
+    lines = []
+    for i, a in enumerate(stories):
+        src = a.get("source_short", "?")
+        date = a.get("pub_date") or "no date"
+        sector = a.get("sector", "?")
+        lines.append(f"\n[{i}] ({src}, {date}, {sector}) {a['title']}")
+        text = (a.get("source_text") or "").strip()
+        if a.get("text_thin") or not text:
+            lines.append(f"    [THIN SOURCE TEXT] {text or '(headline only)'}")
+        else:
+            lines.append(f"    SOURCE TEXT: {text}")
+    return "\n".join(lines)
+
+
+def elaborate(stories):
+    """Attach ``summary_long`` to each story. Returns a refreshed lead or None.
+
+    Failure is non-fatal by design: the stories keep their short triage
+    summaries and the digest still sends, just less deeply.
+    """
+    if not stories:
+        return None
+
+    user = ("Here are today's selected CRE stories. Write the email summary for "
+            "every one.\n" + _build_elaborate_input(stories))
+    data = _call_with_retry(user, _ELABORATE_SYSTEM, _ELABORATE_SCHEMA, len(stories),
+                            label="Long-form summaries", max_tokens=16000)
+    if data is None:
+        print("Long-form summaries unavailable; keeping short triage summaries.",
+              file=sys.stderr)
+        return None
+
+    written = 0
+    for item in data.get("articles") or []:
+        idx = item.get("id")
+        if not isinstance(idx, int) or not 0 <= idx < len(stories):
+            continue
+        text = (item.get("summary_long") or "").strip()
+        if text:
+            stories[idx]["summary"] = text
+            written += 1
+
+    thin = sum(1 for s in stories if s.get("text_thin"))
+    print(f"Long-form summaries: {written}/{len(stories)} written "
+          f"({thin} from thin source text).")
+    return (data.get("lead") or "").strip() or None
