@@ -128,8 +128,24 @@ def _resolve_one(story, allow_search=True):
     return sorted(candidates, key=_rank_candidate, reverse=True)[0]
 
 
+def needs_alternate(story) -> bool:
+    """True when we'd rather link somewhere else than this story's own outlet.
+
+    Two cases, same remedy. A paywalled source the reader can't open, and a
+    content farm — a rewrite site like TradingView or Yahoo Finance fronting
+    someone else's reporting. Both want a credible, freely readable outlet, and
+    the search-and-confirm path is already built and verified.
+
+    If nothing is found the story keeps its own byline either way: losing
+    coverage is worse than an imperfect byline, the same rule the canonical
+    picker in ``enrich`` follows.
+    """
+    return (story.get("access") == "paywalled"
+            or is_content_farm(story.get("source_name", "")))
+
+
 def resolve_all(stories, max_workers=6):
-    """Attach a ``public_alt`` to each gated story that has one.
+    """Attach a ``public_alt`` to each story that wants one.
 
     Only sets the candidate — the link isn't swapped until the model confirms
     it's the same story (search hits) in ``enrich.elaborate``. Cluster
@@ -137,7 +153,7 @@ def resolve_all(stories, max_workers=6):
 
     Returns counts for the funnel log.
     """
-    gated = [s for s in stories if s.get("access") == "paywalled"]
+    gated = [s for s in stories if needs_alternate(s)]
     stats = {"gated": len(gated), "cluster": 0, "search": 0, "none": 0, "fetchable": 0}
     if not gated:
         return stats
@@ -171,7 +187,11 @@ def apply_alternate(story):
     alt = story.get("public_alt")
     if not alt:
         return False
-    story["original_source"] = story.get("source_short") or story.get("source_name")
+    # Credit the outlet we're replacing — but only if it was the originator.
+    # "originally WSJ" is real provenance; "originally TradingView" would
+    # credit a rewrite site for someone else's reporting.
+    if not is_content_farm(story.get("source_name", "")):
+        story["original_source"] = story.get("source_short") or story.get("source_name")
     story["link"] = alt["link"]
     story["source_short"] = alt.get("source_short") or alt.get("source_name")
     story["source_name"] = alt.get("source_name", "")

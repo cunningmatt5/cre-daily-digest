@@ -69,16 +69,18 @@ SECTOR_COLORS = {
 
 SOURCES = [
     # ── Tier 1 ──────────────────────────────────────────────────────────
-    {
-        "name": "Wall Street Journal",
-        "short": "WSJ",
-        # Official Dow Jones RSS — confirmed working (35 items)
-        "url": "https://feeds.content.dowjones.io/public/rss/latestnewsrealestate",
-        "method": "rss",
-        "tier_weight": 30,
-        "color": NAVY,
-        "paywalled": True,
-    },
+    # NOTE: the Wall Street Journal feed was removed 2026-09-19. Dow Jones'
+    # `latestnewsrealestate` is a *residential* feed: a sample of 10 returned
+    # "House of the Week", "$50 Million Four Seasons", "The New Rules for
+    # Selling Your Home" and similar. Three survived the filters and the model
+    # then discarded all three as non-CRE, so a tier-weight-30 source was
+    # contributing nothing but tokens.
+    # Two CRE-scoped `site:wsj.com` replacements were tested and both returned
+    # off-topic results (industrial-production statistics, the Lakers sale,
+    # Hyrox) — Google's site: matching is too loose for a publisher this broad.
+    # WSJ's actual CRE stories still reach the digest through the wire queries
+    # below, correctly classified paywalled; what is lost is the residential
+    # noise, not the coverage.
     {
         "name": "CoStar",
         "short": "CoStar",

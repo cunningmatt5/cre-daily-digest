@@ -117,6 +117,38 @@ def _has_no_date(article) -> bool:
     return article.get("pub_datetime") is None
 
 
+# Headline shapes that are never CRE news, whatever the outlet. The model was
+# already discarding these correctly — catching them here saves the tokens and
+# the truncation risk of asking it 90 times a day.
+#
+# Deliberately narrow. Residential stories and sub-threshold local deals are
+# NOT here: judging those needs the model, and a blunt rule would drop real
+# CRE. Each pattern below was taken from an observed DROPPED(keep=false) line.
+_NOISE_PATTERNS = [
+    (re.compile(r"^(watch|listen)\b", re.I), "video/audio stub"),
+    (re.compile(r"^podcast:", re.I), "podcast stub"),
+    (re.compile(r"\bdies at\b|\bobituary\b", re.I), "obituary"),
+    (re.compile(r"^house of the week\b", re.I), "lifestyle column"),
+    (re.compile(r"\bnominate\b|\bcall for entries\b|\bnominations? (are )?open\b", re.I),
+     "awards promo"),
+    (re.compile(r"\bwebinar\b|\bregister (now|today)\b", re.I), "event promo"),
+    (re.compile(r"\|\s*database\s*$", re.I), "database landing page"),
+    (re.compile(r"\b(announces|expands its) partnership with\b", re.I), "vendor PR"),
+]
+
+
+def _noise_reason(article) -> str:
+    title = article.get("title", "")
+    for pattern, label in _NOISE_PATTERNS:
+        if pattern.search(title):
+            return label
+    return ""
+
+
+def _is_noise(article) -> bool:
+    return bool(_noise_reason(article))
+
+
 def _refine_access_from_domain(article) -> bool:
     """Use the resolved domain to settle access when the publisher name didn't.
 
@@ -215,6 +247,7 @@ def main():
 
     articles = _apply("Social filter     ", _is_social)
     articles = _apply("Non-article filter", _is_non_article, _non_article_reason)
+    articles = _apply("Noise filter      ", _is_noise, _noise_reason)
     articles = _apply("No-date filter    ", _has_no_date)
     articles = _apply("Age filter        ", _is_too_old,
                       lambda a: f"pub {a['pub_datetime'].strftime('%Y-%m-%d %H:%M') if a.get('pub_datetime') else 'no date'}")
@@ -323,7 +356,8 @@ def main():
             if alt and alt.get("origin") == "cluster":
                 story["alt_confirmed"] = True
                 applied_now += apply_alternate(story)
-        print(f"Public sources: {alt_stats['gated']} gated -> "
+        print(f"Public sources: {alt_stats['gated']} stories want a better source "
+              f"(paywalled or content-farm byline) -> "
               f"{alt_stats['cluster']} from cluster ({applied_now} applied), "
               f"{alt_stats['search']} pending confirmation, {alt_stats['none']} none found "
               f"({alt_stats['fetchable']} fetchable)")
