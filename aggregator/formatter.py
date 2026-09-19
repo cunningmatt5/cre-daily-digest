@@ -154,6 +154,53 @@ def _sector_section(sector, items, top_links):
     </td></tr>"""
 
 
+# ── Best of the Rest ─────────────────────────────────────────────────────────
+def _rest_row(article, last):
+    """One scannable line: headline, then outlet and date. No summary."""
+    border = "" if last else f"border-bottom:1px solid {SOFT};"
+    parts = [f'<span style="color:{INK};font-weight:700;">'
+             f'{_esc(article.get("source_short", ""))}</span>']
+    if article.get("original_source"):
+        parts.append(f'originally {_esc(article["original_source"])}')
+    if article.get("paywalled"):
+        parts.append("&#128274; sub")
+    if article.get("pub_date"):
+        parts.append(_esc(article["pub_date"]))
+    sep = '<span style="color:#c8cdd4;"> &nbsp;&middot;&nbsp; </span>'
+    return f"""<tr><td style="padding:9px 0;{border}">
+      <a href="{_esc_attr(article["link"])}" style="color:{INK};text-decoration:none;
+        font-size:13.5px;font-weight:600;line-height:1.4;font-family:{FONT};"
+        >{_esc(article["title"])}</a>
+      <div style="font-size:11.5px;color:{META};font-family:{FONT};margin-top:3px;"
+        >{sep.join(parts)}</div>
+    </td></tr>"""
+
+
+def _best_of_rest(items):
+    """Everything else that cleared the bar, as a flat scannable list.
+
+    Deliberately unsorted by sector and unsummarized — this is the wide net,
+    read by skimming headlines, not the curated part of the digest.
+    """
+    if not items:
+        return ""
+    n = len(items)
+    rows = "".join(_rest_row(a, i == n - 1) for i, a in enumerate(items))
+    return f"""<tr><td style="padding:22px 32px 0;">
+      <table width="100%" cellpadding="0" cellspacing="0" border="0">
+        <tr><td style="padding:16px 0 8px;border-bottom:2px solid {META};">
+          <span style="display:inline-block;width:9px;height:9px;background:{META};
+            border-radius:2px;margin-right:8px;vertical-align:1px;"></span>
+          <span style="color:{META};font-size:13px;font-weight:700;font-family:{FONT};
+            text-transform:uppercase;letter-spacing:1.4px;">Best of the Rest</span>
+          <span style="color:#aeb6c0;font-size:12px;font-family:{FONT};
+            margin-left:7px;">{n}</span>
+        </td></tr>
+      </table>
+      <table width="100%" cellpadding="0" cellspacing="0" border="0">{rows}</table>
+    </td></tr>"""
+
+
 def _lead_block(lead):
     if not lead:
         return ""
@@ -173,18 +220,24 @@ def _lead_block(lead):
     </td></tr>"""
 
 
-def build_html_email(today, sections, lead=None, top_stories=None, count=None):
+def build_html_email(today, sections, lead=None, top_stories=None, count=None,
+                     rest=None):
     """Render the digest.
 
     ``sections``      list of ``(sector_name, [articles])``.
     ``lead``          optional LLM editor's brief (omitted in fallback mode).
     ``top_stories``   optional ranked list for the hero (omitted in fallback).
+    ``rest``          optional extra stories shown as bare headline + link.
     """
     date_str = f"{today:%A, %B} {today.day}, {today.year}"
     now = datetime.now(timezone.utc)
     timestamp = f"{now.strftime('%I').lstrip('0')}:{now:%M %p} UTC"
+    rest = rest or []
     if count is None:
         count = sum(len(items) for _, items in sections)
+    # The masthead counts the summarized stories; the wider net is called out
+    # separately so the headline number still reflects the curated part.
+    rest_label = f" &#43; {len(rest)} more" if rest else ""
     tagline = ("Clustered &amp; ranked by Claude" if lead
                else "Ranked by deal size &amp; cross-source corroboration")
     top_links = {a.get("link") for a in (top_stories or [])}
@@ -221,13 +274,14 @@ def build_html_email(today, sections, lead=None, top_stories=None, count=None):
           </table>
           <div style="margin-top:9px;color:#9fe0d4;font-size:10.5px;font-family:{FONT};
             text-transform:uppercase;letter-spacing:1.5px;font-weight:600;">
-            {count} stories &nbsp;&middot;&nbsp; {tagline}
+            {count} stories{rest_label} &nbsp;&middot;&nbsp; {tagline}
           </div>
         </td></tr>
 
         {_lead_block(lead)}
         {_hero(top_stories)}
         {"".join(_sector_section(s, items, top_links) for s, items in sections)}
+        {_best_of_rest(rest)}
 
         <!-- Footer -->
         <tr><td style="padding:24px 32px 26px;">

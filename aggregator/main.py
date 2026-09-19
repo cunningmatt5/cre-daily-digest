@@ -8,7 +8,7 @@ from pathlib import Path
 from urllib.parse import urlparse
 
 from .config import (SOURCES, MAX_PER_SECTOR, DISPLAY_MIN_SIGNIFICANCE,
-                     DISPLAY_MIN_STORIES, DISPLAY_MAX_STORIES)
+                     DISPLAY_MIN_STORIES, DISPLAY_MAX_STORIES, REST_MAX_STORIES)
 from .feeds import fetch_all
 from .scorer import score_and_sort, group_by_sector
 from .enrich import enrich, elaborate
@@ -295,6 +295,17 @@ def main():
             displayed = [a for _, items in sections for a in items]
 
     shown = len(displayed)
+
+    # "Best of the Rest": next-best stories that cleared the floor but lost the
+    # top-N cut. Headline + link only, so widening the net costs no reading time
+    # and no extra tokens — they skip the body fetch and the summarizer.
+    shown_links = {a["link"] for a in displayed}
+    rest = [a for a in by_sig if a["link"] not in shown_links][:REST_MAX_STORIES]
+    if rest:
+        rest_sigs = [a.get("significance", 0) for a in rest]
+        print(f"Best of the Rest: {len(rest)} additional stories "
+              f"(significance {max(rest_sigs)} down to {min(rest_sigs)})")
+
     top_stories = sorted(displayed, key=lambda x: x.get("significance", 0), reverse=True)[:5]
     sigs = [a.get("significance", 0) for a in displayed]
     print(f"Display: {len(ranked)} ranked -> {shown} shown (floor {floor}, "
@@ -315,12 +326,15 @@ def main():
         # the only links a reader will ever click. Wins: a direct link instead of
         # a Google interstitial, a real domain to sanity-check access against,
         # and an article we can actually fetch to summarize.
-        link_stats = resolve_links(displayed)
+        # Resolve links for the Best of the Rest too — they're clickable, so
+        # they shouldn't land on a Google interstitial either. They stop there:
+        # no body fetch, no summarizer.
+        link_stats = resolve_links(displayed + rest)
         if link_stats["attempted"]:
             print(f"Link resolution: {link_stats['resolved']}/{link_stats['attempted']} "
                   f"Google News links resolved to publisher URLs")
         refined = 0
-        for story in displayed:
+        for story in displayed + rest:
             if story.get("google_link"):
                 refined += _refine_access_from_domain(story)
         if refined:
@@ -383,7 +397,8 @@ def main():
 
     today = date.today()
     subject = f"CRE Daily Digest — {today.strftime('%B %d, %Y')}"
-    html = build_html_email(today, sections, lead=lead, top_stories=top_stories, count=shown)
+    html = build_html_email(today, sections, lead=lead, top_stories=top_stories,
+                            count=shown, rest=rest)
 
     if dry_run:
         PREVIEW_FILE.parent.mkdir(exist_ok=True)
@@ -400,8 +415,11 @@ def main():
     # tomorrow if it still matters; the age filter (MAX_AGE_DAYS) bounds how long
     # it can keep recirculating, so nothing stale leaks back in.
     displayed = [a for _, items in sections for a in items]
-    sent_links = {a["link"].rstrip("/") for a in displayed}
-    for a in displayed:
+    # Best of the Rest stories were linked in the email too, so they count as
+    # delivered — otherwise they'd reappear as fresh news tomorrow.
+    delivered = displayed + rest
+    sent_links = {a["link"].rstrip("/") for a in delivered}
+    for a in delivered:
         for link in a.get("cluster_links") or []:
             sent_links.add(link.rstrip("/"))
         # A resolved story is keyed on its publisher URL, but tomorrow's fetch
@@ -410,8 +428,9 @@ def main():
         if a.get("google_link"):
             sent_links.add(a["google_link"].rstrip("/"))
     save_seen_urls(sorted(sent_links))
-    print(f"Seen URLs updated ({len(sent_links)} links from {len(displayed)} shown stories; "
-          f"{len(ranked) - len(displayed)} unshown stories left eligible for tomorrow).")
+    print(f"Seen URLs updated ({len(sent_links)} links from {len(delivered)} delivered "
+          f"stories — {len(displayed)} summarized, {len(rest)} in Best of the Rest; "
+          f"{len(ranked) - len(delivered)} unshown stories left eligible for tomorrow).")
 
 
 if __name__ == "__main__":

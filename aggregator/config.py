@@ -411,6 +411,12 @@ DISPLAY_MIN_STORIES = int(os.environ.get("DIGEST_MIN_STORIES", "12"))
 # (60→55→50) without settling: the floor stays as a quality gate, the count
 # decides length.
 DISPLAY_MAX_STORIES = int(os.environ.get("DIGEST_MAX_STORIES", "20"))
+# "Best of the Rest": stories that cleared the significance floor but lost the
+# top-N cut. Listed as bare headline + link at the foot of the email — no
+# summary, no sector grouping — so the net is wider without making the digest
+# longer to read. They cost nothing extra to produce: no body fetch, and they
+# are not sent to the long-form summarizer.
+REST_MAX_STORIES = int(os.environ.get("DIGEST_REST_STORIES", "20"))
 SUMMARY_MAX_CHARS = 280
 # How much article body to hand the summarizer. ~2.5k chars is far more than
 # 4–5 sentences needs, and keeps the whole elaborate() call near 15k tokens.
