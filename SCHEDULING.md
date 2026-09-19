@@ -7,19 +7,31 @@ scheduled jobs during high load — worst of all at the top of the hour (`:00`) 
 runs can be delayed by **hours** or skipped entirely. Our old schedule fired at
 `12:00 / 13:00 / 14:00 UTC` (all `:00`) and was routinely landing 2–5 hours late.
 
-So timing uses two layers:
+## Current approach: crons set early, to be absorbed by the delay
 
-1. **Primary — external trigger (on time, DST-aware).** An external scheduler calls
-   the GitHub API to *dispatch* the workflow. Dispatch events aren't subject to the
-   schedule-queue delays, so they fire promptly. cron-job.org supports a timezone, so
-   it tracks EDT/EST automatically.
-2. **Fallback — GitHub cron.** Off-peak, odd-minute, staggered early attempts
-   (`.github/workflows/daily_digest.yml`). If the external trigger ever fails, these
-   still send. They run in UTC (no DST), so they drift ~1 hour between seasons but stay
-   in the early-morning, pre-9am window.
+The external trigger below was documented but **never set up** — every run to date has
+been a `schedule` event. Moving to odd, off-peak minutes did not fix the delay. Measured
+over 20 days (Aug 30 – Sep 18, 2026), the first run of the day landed a **median of ~4h10
+after its cron time** (min 3h05, max 7h15), so digests arrived 9:30 AM – 1:30 PM ET.
 
-Either way, the workflow's **skip-if-already-ran** guard ensures only the first
-successful run of the day actually sends — extra triggers just no-op.
+The delay is large but fairly *consistent*, so the crons are now set ~4h **before** the
+desired send time and left to be absorbed by the queue. This does not make the digest
+stale: the job fetches when it actually dequeues (~10:30 UTC / 6:30 AM ET), not at cron
+time. Two regimes are covered:
+
+- **Queue delayed (typical):** the `06:22 UTC` attempt dequeues around `10:30 UTC`.
+- **Queue empty (occasional):** the early attempts are blocked by the `EARLIEST_SEND_UTC`
+  floor (`10:00 UTC` = 6:00 AM EDT / 5:00 AM EST) so they can't email at 2 AM ET, and the
+  `10:22 UTC` attempt — which is past the floor — sends on time instead.
+
+The **skip-if-already-ran** guard ensures only the first eligible run of the day actually
+sends; the rest no-op. The crons run in UTC (no DST), so send time drifts ~1 hour between
+seasons.
+
+If this still proves too unreliable, the upgrade is the external trigger below: it calls
+the GitHub API to *dispatch* the workflow, and dispatch events aren't subject to the
+schedule queue, so they fire promptly. cron-job.org supports a timezone, so it tracks
+EDT/EST automatically.
 
 ## Set up the primary external trigger (~5 minutes)
 
