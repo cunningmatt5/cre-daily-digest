@@ -1,4 +1,3 @@
-import collections
 import json
 import os
 import re
@@ -11,6 +10,7 @@ from .config import (SOURCES, MAX_PER_SECTOR, DISPLAY_MIN_SIGNIFICANCE,
                      DISPLAY_MIN_STORIES, DISPLAY_MAX_STORIES, REST_MAX_STORIES)
 from .feeds import fetch_all
 from .scorer import score_and_sort, group_by_sector
+from .select import select_display
 from .enrich import enrich, elaborate
 from .extract import gather
 from .resolve import resolve_links, is_google_link
@@ -167,8 +167,16 @@ def save_seen_urls(urls: list):
     except Exception:
         data = {}
     cutoff = date.today() - timedelta(days=KEEP_DAYS)
-    data = {k: v for k, v in data.items()
-            if date.fromisoformat(k) >= cutoff}
+
+    def _fresh(key):
+        # A malformed key must not crash a run whose email has already gone out.
+        # load_seen_urls has always tolerated this; save did not.
+        try:
+            return date.fromisoformat(key) >= cutoff
+        except ValueError:
+            return False
+
+    data = {k: v for k, v in data.items() if _fresh(k)}
     today_str = date.today().isoformat()
     data[today_str] = list(set(data.get(today_str, [])) | set(urls))
     SEEN_FILE.write_text(json.dumps(data, indent=2), encoding="utf-8")
@@ -235,76 +243,38 @@ def main():
     # Significance floor — show only critical stories. LLM significance is a
     # calibrated 0–100; the fallback scorer's scale isn't, so skip the floor there.
     floor = DISPLAY_MIN_SIGNIFICANCE if enriched else 0
-    display_pool = ranked
-    if floor:
-        kept = [a for a in ranked if a.get("significance", 0) >= floor]
-        below = [a for a in ranked if a.get("significance", 0) < floor]
-        if len(kept) >= DISPLAY_MIN_STORIES:
-            display_pool = kept
-            print(f"Significance floor ({floor}): hiding {len(below)} below-threshold stories")
-            for a in sorted(below, key=lambda x: x.get("significance", 0), reverse=True):
-                print(f"  BELOW[{a.get('significance')}] [{a.get('sector')}] {a['title'][:80]!r}")
-        else:
-            # Too few cleared the floor — fall back to the top N so the digest
-            # is never near-empty.
-            display_pool = ranked[:DISPLAY_MIN_STORIES]
-            print(f"Significance floor ({floor}) left only {len(kept)} (< {DISPLAY_MIN_STORIES}); "
-                  f"showing top {len(display_pool)} by significance instead.")
+    sections, displayed, rest, sel = select_display(
+        ranked, group_by_sector,
+        floor=floor, min_stories=DISPLAY_MIN_STORIES, max_stories=DISPLAY_MAX_STORIES,
+        max_per_sector=MAX_PER_SECTOR, rest_max=REST_MAX_STORIES,
+    )
 
-    # Hard cap on length. With 4–5 sentence summaries each story costs roughly
-    # 3x the vertical space, so depth is bought with breadth.
-    by_sig = sorted(display_pool, key=lambda x: x.get("significance", 0), reverse=True)
-    if len(by_sig) > DISPLAY_MAX_STORIES:
-        cut = by_sig[DISPLAY_MAX_STORIES:]
-        display_pool = by_sig[:DISPLAY_MAX_STORIES]
+    if sel["floor_fallback"]:
+        print(f"Significance floor ({floor}) left only {sel['cleared_floor']} "
+              f"(< {DISPLAY_MIN_STORIES}); showing top {len(displayed)} by significance instead.")
+    elif sel["below"]:
+        print(f"Significance floor ({floor}): hiding {len(sel['below'])} below-threshold stories")
+        for a in sel["below"]:
+            print(f"  BELOW[{a.get('significance')}] [{a.get('sector')}] {a['title'][:80]!r}")
+
+    if sel["cut"]:
         print(f"Story cap: showing top {DISPLAY_MAX_STORIES} by significance, "
-              f"cutting {len(cut)} above the floor")
+              f"cutting {len(sel['cut'])} above the floor")
         # These cleared the quality floor and were dropped purely for length.
         # Logging them is the only way to notice a major story being squeezed
         # out by a crowded day.
-        for a in cut[:12]:
+        for a in sel["cut"][:12]:
             print(f"  CUT[{a.get('significance')}] [{a.get('sector')}] {a['title'][:78]!r}")
-        if len(cut) > 12:
-            print(f"  ... and {len(cut) - 12} more")
-    else:
-        display_pool = by_sig
+        if len(sel["cut"]) > 12:
+            print(f"  ... and {len(sel['cut']) - 12} more")
 
-    # Curated display: cap each sector so one busy sector can't fill the email.
-    sections = group_by_sector(display_pool, max_per_sector=MAX_PER_SECTOR)
-    displayed = [a for _, items in sections for a in items]
-
-    # The sector cap runs after the top-N selection, so a crowded sector could
-    # both drop a high-scoring story and leave the digest short. Backfill from
-    # the next-best stories that are still under their sector's cap, highest
-    # significance first, so length is never paid for with importance.
-    if len(displayed) < DISPLAY_MAX_STORIES:
-        shown_links = {a["link"] for a in displayed}
-        per_sector = collections.Counter(a.get("sector", "Other") for a in displayed)
-        backfill = []
-        for a in by_sig:
-            if len(displayed) + len(backfill) >= DISPLAY_MAX_STORIES:
-                break
-            sector = a.get("sector", "Other")
-            if a["link"] in shown_links or per_sector[sector] >= MAX_PER_SECTOR:
-                continue
-            per_sector[sector] += 1
-            backfill.append(a)
-        if backfill:
-            print(f"Backfilled {len(backfill)} stories displaced by the sector cap")
-            sections = group_by_sector(displayed + backfill, max_per_sector=MAX_PER_SECTOR)
-            displayed = [a for _, items in sections for a in items]
+    if sel["backfilled"]:
+        print(f"Backfilled {sel['backfilled']} stories displaced by the sector cap")
 
     shown = len(displayed)
-
-    # "Best of the Rest": next-best stories that cleared the floor but lost the
-    # top-N cut. Headline + link only, so widening the net costs no reading time
-    # and no extra tokens — they skip the body fetch and the summarizer.
-    shown_links = {a["link"] for a in displayed}
-    rest = [a for a in by_sig if a["link"] not in shown_links][:REST_MAX_STORIES]
-    if rest:
-        rest_sigs = [a.get("significance", 0) for a in rest]
+    if sel["rest_range"]:
         print(f"Best of the Rest: {len(rest)} additional stories "
-              f"(significance {max(rest_sigs)} down to {min(rest_sigs)})")
+              f"(significance {sel['rest_range'][0]} down to {sel['rest_range'][1]})")
 
     top_stories = sorted(displayed, key=lambda x: x.get("significance", 0), reverse=True)[:5]
     sigs = [a.get("significance", 0) for a in displayed]
