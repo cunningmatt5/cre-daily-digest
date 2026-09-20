@@ -327,6 +327,20 @@ SOURCES = [
         "tier_weight": 9,
         "color": GREEN,
     },
+    {
+        "name": "The DI Wire",
+        "short": "DI Wire",
+        # Real-estate private equity and the non-traded vehicles around it:
+        # nontraded REIT registrations, fund liquidations and closings, DST
+        # offerings, sponsor distributions. ~2.5k chars of body text per item.
+        # Publishes weekdays only, so its Monday contribution depends on the
+        # business-day age window in main.py — under the old calendar-day rule
+        # its Friday stories were 3 days old by Monday and filtered entirely.
+        "url": "https://thediwire.com/feed/",
+        "method": "rss",
+        "tier_weight": 12,
+        "color": GREEN,
+    },
     # ── Broad discovery (Google News topic queries, time-restricted) ─────
     # The recall engine: these cast a wide, fresh net across ALL outlets —
     # not just the publishers listed above — so relevant CRE news from any
@@ -389,7 +403,55 @@ SOURCES = [
         "tier_weight": 12,
         "color": GREEN,
     },
+    {
+        "name": "RE Private Equity",
+        "short": "Wire",
+        # Fund formation and capital raising — the one part of the real-estate
+        # private-equity beat the other queries miss. Deliberately narrow:
+        # broadening toward firm names just duplicates "CRE Major Players"
+        # above, which testing showed overlaps almost entirely.
+        #
+        # days=4 because fund-close news is genuinely low-cadence. A tight
+        # query with a wider window beats a loose one with a narrow window —
+        # expect a handful of items, not a stream.
+        "url": gnews(
+            '("real estate fund" OR "real estate vehicle") '
+            '(closes OR "final close" OR raises OR "capital raise" '
+            "OR oversubscribed OR recapitalization)",
+            days=4,
+        ),
+        "method": "rss",
+        "tier_weight": 12,
+        "color": GREEN,
+    },
 ]
+
+# ── Tested and rejected ──────────────────────────────────────────────────────
+# Recorded so they aren't re-proposed. Each was measured, not assumed.
+#
+# General news outlets scoped with CRE keywords — Reuters, CNBC, FT, Fortune,
+#   Axios, MarketWatch, Barron's, Business Insider, Institutional Investor,
+#   Pensions & Investments. Google's site: matching is far too loose for
+#   publishers this broad: results included Ukraine drone strikes, a Top Chef
+#   finalist, Aaron Sorkin and MarketWatch stock-quote pages. "data center" is
+#   especially poisonous — it pulls AI/tech coverage, not real estate. Same
+#   failure mode as the WSJ feed removed above.
+#
+# General private-equity outlets scoped to real estate — Private Equity Wire,
+#   Alternative Credit Investor. Well-dated and high-volume, but their
+#   subjects' non-real-estate activity dominates ("Brookfield to acquire
+#   Reliance Worldwide" — plumbing products; "GFL takeover" — waste
+#   management). The firm names match; the stories aren't CRE.
+#
+# Commercial Property Executive — commercialsearch.com/news/feed/ returns 403
+#   through every method (requests with and without our headers, feedparser
+#   direct). Its Google News proxy returns property listings, not news. One
+#   probe briefly returned entries before repeated probes 403'd consistently.
+#   Worth retrying someday; not addable now.
+#
+# Low-cadence or feedless — Institutional Real Estate (3 entries, 0 fresh),
+#   IPE Real Assets (5 entries, 0 fresh, Europe-focused), Real Estate Capital
+#   USA, WealthManagement.com, Multi-Housing News (no working feed).
 
 # Pull more per source (RSS feeds are freshest-first, so a higher cap = more
 # of today's news, not stale backfill).
