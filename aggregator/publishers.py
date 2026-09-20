@@ -56,6 +56,7 @@ FREE_ALLOWLIST = {
     "senior housing news", "inside self-storage", "insideselfstorage",
     "construction dive", "retail dive", "multifamily dive", "hotel dive",
     "supply chain dive", "facilitiesnet", "rebusiness",
+    "the di wire", "thediwire",
     # Mortgage / finance trade
     "scotsman guide", "themortgagepoint", "mortgage point", "housingwire",
     "national mortgage news",
