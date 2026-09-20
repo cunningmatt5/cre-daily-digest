@@ -143,7 +143,12 @@ def _recency_bonus(article) -> int:
     return 0
 
 
-def _title_tokens(title: str) -> frozenset:
+def title_tokens(title: str) -> frozenset:
+    """Significant lowercase words in a headline, for Jaccard comparison.
+
+    Public because publicize.py needs the same tokenisation to decide
+    whether a search hit is the same story.
+    """
     words = re.findall(r"[a-z0-9]+", title.lower())
     return frozenset(w for w in words if w not in _STOPWORDS and len(w) > 2)
 
@@ -152,7 +157,7 @@ def _cluster_duplicates(articles):
     """Greedy Jaccard clustering of near-identical titles (O(n^2), n is small)."""
     clusters = []  # each: {"members": [...], "tokens": frozenset}
     for a in articles:
-        toks = _title_tokens(a["title"])
+        toks = title_tokens(a["title"])
         placed = False
         for c in clusters:
             inter = len(toks & c["tokens"])

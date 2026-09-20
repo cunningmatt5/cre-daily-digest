@@ -23,6 +23,7 @@ from bs4 import BeautifulSoup
 
 from .config import FULL_TEXT_MAX_CHARS, THIN_TEXT_CHARS
 from .feeds import HEADERS
+from .resolve import is_direct_link
 
 # Chrome that a paywall teaser leaves behind. Not used to *detect* paywalls —
 # testing showed Commercial Observer and Bisnow both trip paywall-marker
@@ -32,9 +33,6 @@ _STRIP_TAGS = ["script", "style", "nav", "header", "footer", "aside", "form",
                "figure", "noscript"]
 
 
-def _is_direct(link: str) -> bool:
-    """True when the URL points at a publisher we can actually fetch."""
-    return bool(link) and "news.google.com" not in link
 
 
 def fetch_body(link: str, timeout: int = 14) -> str:
@@ -43,7 +41,7 @@ def fetch_body(link: str, timeout: int = 14) -> str:
     Deliberately forgiving: any failure returns empty and the caller falls back
     a tier. Never raises.
     """
-    if not _is_direct(link):
+    if not is_direct_link(link):
         return ""
     try:
         r = requests.get(link, headers=HEADERS, timeout=timeout)

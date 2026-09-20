@@ -198,6 +198,39 @@ def _refine_access_from_domain(article) -> bool:
     return True
 
 
+def _drop_link_collisions(sections, displayed, rest):
+    """Remove stories that share a final URL, keeping the summarized copy.
+
+    Returns ``(sections, displayed, rest, dropped_count)``. The summarized copy
+    always wins: it carries a long-form summary and its sector placement, where
+    the Best of the Rest entry is only a headline.
+    """
+    seen, kept_displayed, dropped = set(), [], 0
+    for a in displayed:
+        key = a["link"].rstrip("/")
+        if key in seen:
+            dropped += 1
+            continue
+        seen.add(key)
+        kept_displayed.append(a)
+
+    kept_rest = []
+    for a in rest:
+        key = a["link"].rstrip("/")
+        if key in seen:
+            dropped += 1
+            continue
+        seen.add(key)
+        kept_rest.append(a)
+
+    if dropped:
+        keep = {id(a) for a in kept_displayed}
+        sections = [(name, [a for a in items if id(a) in keep])
+                    for name, items in sections]
+        sections = [(name, items) for name, items in sections if items]
+    return sections, kept_displayed, kept_rest, dropped
+
+
 def load_seen_urls() -> set:
     if not SEEN_FILE.exists():
         return set()
@@ -371,14 +404,12 @@ def main():
     # Long-form pass, over the displayed stories only. `displayed` holds the same
     # dicts as `sections`, so summaries written here land in the rendered email.
     if enriched and displayed:
-        # Turn Google News bounce links into real publisher URLs. Done for the
-        # displayed stories only — it costs two requests per link, and these are
-        # the only links a reader will ever click. Wins: a direct link instead of
+        # Turn Google News bounce links into real publisher URLs, for everything
+        # the reader can click — the summarized stories and Best of the Rest
+        # alike. Two requests per link, and the wins are a direct link instead of
         # a Google interstitial, a real domain to sanity-check access against,
-        # and an article we can actually fetch to summarize.
-        # Resolve links for the Best of the Rest too — they're clickable, so
-        # they shouldn't land on a Google interstitial either. They stop there:
-        # no body fetch, no summarizer.
+        # and an article we can actually fetch to summarize. Best of the Rest
+        # stops there: no body fetch, no summarizer.
         link_stats = resolve_links(displayed + rest)
         if link_stats["attempted"]:
             print(f"Link resolution: {link_stats['resolved']}/{link_stats['attempted']} "
@@ -445,6 +476,21 @@ def main():
                     story.setdefault("cluster_links", []).append(prior)
             again = resolve_links(swapped)
             print(f"Alternate links resolved: {again['resolved']}/{again['attempted']}")
+
+    # Final collision sweep, once every link has settled.
+    #
+    # The earlier URL dedup runs before resolution, so it compares Google News
+    # bounce URLs. When one of those later resolves onto an article we also pull
+    # from a direct feed, both copies survive — measured at roughly one in forty
+    # resolutions, e.g. a wire item landing on yieldpro.com when Yield PRO is
+    # already a source. The reader would see the same story twice, once
+    # summarized and once in Best of the Rest.
+    sections, displayed, rest, dropped = _drop_link_collisions(sections, displayed, rest)
+    if dropped:
+        print(f"Link collisions: dropped {dropped} duplicate(s) that only became "
+              f"visible after resolution")
+        shown = len(displayed)
+        top_stories = [a for a in top_stories if a in displayed]
 
     today = date.today()
     subject = f"CRE Daily Digest — {today.strftime('%B %d, %Y')}"

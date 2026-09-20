@@ -7,7 +7,6 @@ import requests
 from bs4 import BeautifulSoup
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from datetime import datetime
-from urllib.parse import urljoin
 
 # Matches /YYYY/MM/DD/ in a URL path (e.g. globest.com/2026/05/01/article-title)
 _URL_DATE_RE = re.compile(r"/(\d{4})/(\d{2})/(\d{2})/")
@@ -63,21 +62,6 @@ def _parse_rss_date(entry):
     return "", None
 
 
-def _parse_html_date(tag):
-    """Return (display_str, datetime_obj) from a BeautifulSoup <time> element."""
-    if not tag:
-        return "", None
-    raw = tag.get("datetime", "")
-    if raw:
-        for fmt in ("%Y-%m-%dT%H:%M:%S", "%Y-%m-%d"):
-            try:
-                dt = datetime.strptime(raw[:19], fmt)
-                return dt.strftime("%b %d, %Y"), dt
-            except ValueError:
-                pass
-    return tag.get_text(strip=True)[:20], None
-
-
 def _date_from_url(url: str):
     """Extract a date from a URL path like /2026/05/01/ as a fallback."""
     m = _URL_DATE_RE.search(url)
@@ -104,8 +88,6 @@ def _make_article(title, link, snippet, pub_date, pub_datetime, source, position
         "pub_datetime": pub_datetime,
         "source_name": source["name"],
         "source_short": source["short"],
-        "source_color": source["color"],
-        "tier_weight": source["tier_weight"],
         "paywalled": source.get("paywalled", False),
         "position": position,
     }
@@ -206,76 +188,19 @@ def fetch_rss(source):
     return articles
 
 
-def scrape_headlines(source):
-    try:
-        r = requests.get(source["url"], headers=HEADERS, timeout=14)
-        r.raise_for_status()
-    except Exception:
-        return []
-
-    soup = BeautifulSoup(r.text, "lxml")
-    base = source["url"]
-    candidates = []
-
-    # Strategy 1: explicit <article> elements
-    for article in soup.find_all("article"):
-        heading = article.find(["h1", "h2", "h3", "h4"])
-        if not heading:
-            continue
-        a_tag = heading.find("a", href=True) or article.find("a", href=True)
-        if not a_tag:
-            continue
-        title = heading.get_text(strip=True)
-        link = urljoin(base, a_tag["href"])
-        p_tag = article.find("p")
-        snippet = p_tag.get_text(strip=True) if p_tag else ""
-        pub_date, pub_datetime = _parse_html_date(article.find("time"))
-        if title and link:
-            candidates.append((title, link, snippet, pub_date, pub_datetime))
-
-    # Strategy 2: h2/h3 tags with anchor links
-    if not candidates:
-        for tag in soup.find_all(["h2", "h3"]):
-            a_tag = tag.find("a", href=True)
-            if not a_tag:
-                parent = tag.parent
-                a_tag = parent.find("a", href=True) if parent else None
-            if not a_tag:
-                continue
-            title = tag.get_text(strip=True)
-            link = urljoin(base, a_tag["href"])
-            sibling = tag.find_next_sibling("p")
-            snippet = sibling.get_text(strip=True) if sibling else ""
-            time_tag = tag.find_next("time")
-            pub_date, pub_datetime = _parse_html_date(time_tag)
-            if title and link:
-                candidates.append((title, link, snippet, pub_date, pub_datetime))
-
-    # Deduplicate and cap
-    seen = set()
-    articles = []
-    for i, (title, link, snippet, pub_date, pub_datetime) in enumerate(candidates):
-        if len(articles) >= MAX_ARTICLES_PER_SOURCE:
-            break
-        norm = link.rstrip("/")
-        if norm in seen or not title:
-            continue
-        seen.add(norm)
-        if not snippet:
-            meta = soup.find("meta", attrs={"name": "description"})
-            snippet = meta.get("content", "") if meta else ""
-        if not pub_datetime:
-            pub_date, pub_datetime = _date_from_url(link)
-        scraped = _make_article(title, link, snippet, pub_date, pub_datetime, source, i)
-        _apply_access(scraped, source)
-        articles.append(scraped)
-
-    return articles
-
-
 def _fetch_one(source, retries=2):
-    """Fetch a single source with a small retry, returning a list of articles."""
-    fetch = fetch_rss if source["method"] == "rss" else scrape_headlines
+    """Fetch a single source with a small retry, returning a list of articles.
+
+    Every source is RSS. The HTML-scraping path was removed once the last
+    scraped source went: those sites published no date in any form, so the
+    freshness filter discarded everything they produced. ``method`` is kept in
+    the config as documentation, and anything other than ``"rss"`` is a config
+    error rather than a silently different code path.
+    """
+    if source.get("method") != "rss":
+        raise ValueError(f"{source['name']}: unsupported method "
+                         f"{source.get('method')!r} — only 'rss' is supported")
+    fetch = fetch_rss
     last_exc = None
     for attempt in range(retries + 1):
         try:

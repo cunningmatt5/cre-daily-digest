@@ -24,7 +24,8 @@ from concurrent.futures import ThreadPoolExecutor, as_completed
 
 from .config import gnews
 from .publishers import is_content_farm, is_linkable_free
-from .scorer import _title_tokens
+from .resolve import is_direct_link
+from .scorer import title_tokens
 
 # Search hits are only keyword matches — the "$1M home" probe returned
 # topically-related but genuinely different articles. Require substantial title
@@ -36,9 +37,6 @@ _STOPWORDS = {"the", "a", "an", "of", "in", "on", "for", "and", "to", "as", "at"
               "amid", "over", "new"}
 
 
-def _is_direct(link: str) -> bool:
-    """True when the URL is a real publisher page we could fetch."""
-    return bool(link) and "news.google.com" not in link
 
 
 def _search_query(title: str, max_words: int = 9) -> str:
@@ -48,7 +46,7 @@ def _search_query(title: str, max_words: int = 9) -> str:
 
 
 def _same_story(title_a: str, title_b: str) -> float:
-    a, b = _title_tokens(title_a or ""), _title_tokens(title_b or "")
+    a, b = title_tokens(title_a or ""), title_tokens(title_b or "")
     if not a or not b:
         return 0.0
     return len(a & b) / len(a | b)
@@ -62,7 +60,7 @@ def _rank_candidate(cand) -> tuple:
     """
     return (
         is_linkable_free(cand.get("source_name", "")),
-        _is_direct(cand.get("link", "")),
+        is_direct_link(cand.get("link", "")),
         len(cand.get("full_text") or ""),
     )
 
@@ -88,7 +86,7 @@ def _from_search(story, days=4, max_hits=3):
     if len(query) < 12:
         return []
     probe = {"name": "alt-probe", "short": "alt", "url": gnews(query, days=days),
-             "method": "rss", "tier_weight": 1, "color": "#000"}
+             "method": "rss"}
     out = []
     for hit in fetch_rss(probe):
         name = hit.get("source_name", "")
@@ -173,7 +171,7 @@ def resolve_all(stories, max_workers=6):
                 continue
             story["public_alt"] = alt
             stats[alt["origin"]] += 1
-            if _is_direct(alt.get("link", "")):
+            if is_direct_link(alt.get("link", "")):
                 stats["fetchable"] += 1
     return stats
 
