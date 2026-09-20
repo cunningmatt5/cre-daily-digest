@@ -16,6 +16,20 @@ PAGE  = "#eef1f6"   # page background
 FONT = ("-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Arial,"
         "sans-serif")
 
+# Outlook on Windows renders mail with the Microsoft Word engine, not a browser
+# engine. It ignores max-width, drops margins on <div>, prefers the HTML width
+# attribute over CSS on cells, and applies its own line spacing unless told not
+# to. Left alone it produced a visibly different email for an Outlook reader:
+# the column ran the full window width and the text blocks closed up.
+#
+# MSO_LH makes Word honour a stated line-height instead of substituting its own.
+# Spacing that has to survive is expressed as table-cell padding, which Word
+# does respect, rather than as a margin on a div, which it frequently discards.
+MSO_LH = "mso-line-height-rule:exactly;"
+# Kills the extra gutter Word adds either side of a nested table.
+MSO_TABLE = "mso-table-lspace:0pt;mso-table-rspace:0pt;border-collapse:collapse;"
+CARD_WIDTH = 640
+
 
 def _esc(text):
     return (text or "").replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;")
@@ -60,9 +74,11 @@ def _meta_line(article, sector=None):
     if article.get("pub_date"):
         parts.append(f'<span style="color:{META};">{_esc(article["pub_date"])}</span>')
     sep = '<span style="color:#c8cdd4;"> &nbsp;&middot;&nbsp; </span>'
+    # No margin here: callers place this in its own table cell with padding,
+    # because Word drops margins on a div.
     return (
-        f'<div style="font-size:12px;font-family:{FONT};line-height:1.45;'
-        f'margin-top:4px;">{sep.join(parts)}</div>'
+        f'<div style="font-size:12px;font-family:{FONT};{MSO_LH}line-height:1.45;'
+        f'">{sep.join(parts)}</div>'
     )
 
 
@@ -80,16 +96,24 @@ def _hero_item(article, rank, last):
     title = _esc(article["title"])
     link = _esc_attr(article["link"])
     border = "" if last else f"border-bottom:1px solid {SOFT};"
+    # The rank cell carries an HTML width attribute as well as CSS: Word ignores
+    # the CSS and collapses the cell to its content, which pushed the number
+    # hard against the headline for an Outlook reader. The badge itself is a
+    # one-cell table rather than a styled div, so Word gives it real dimensions
+    # (it still renders square there — border-radius is unsupported).
     return f"""<tr>
-      <td style="width:34px;padding:11px 0;vertical-align:top;{border}">
-        <div style="width:23px;height:23px;background:{TEAL};border-radius:50%;
-          color:#ffffff;font-size:12px;font-weight:800;text-align:center;
-          line-height:23px;font-family:{FONT};">{rank}</div>
+      <td width="34" style="width:34px;padding:11px 0;vertical-align:top;{border}">
+        <table width="23" cellpadding="0" cellspacing="0" border="0" style="{MSO_TABLE}">
+          <tr><td width="23" height="23" align="center" bgcolor="{TEAL}"
+            style="width:23px;height:23px;background:{TEAL};border-radius:50%;
+            color:#ffffff;font-size:12px;font-weight:800;text-align:center;
+            {MSO_LH}line-height:23px;font-family:{FONT};">{rank}</td></tr>
+        </table>
       </td>
       <td style="padding:11px 0;vertical-align:top;{border}">
         <a href="{link}" style="color:{INK};text-decoration:none;font-size:14.5px;
-          font-weight:700;line-height:1.35;font-family:{FONT};">{title}</a>
-        {_meta_line(article, sector=article.get("sector"))}
+          font-weight:700;{MSO_LH}line-height:1.35;font-family:{FONT};">{title}</a>
+        <div style="padding-top:4px;">{_meta_line(article, sector=article.get("sector"))}</div>
       </td>
     </tr>"""
 
@@ -119,17 +143,22 @@ def _story_row(article, color, first, is_top):
     # Summaries are now 4–5 sentences rather than one, so they carry a little
     # more leading and top margin to stay readable as a paragraph.
     summary_html = (
-        f'<div style="margin-top:7px;color:{BODY};font-size:13.5px;'
-        f'line-height:1.62;font-family:{FONT};">{summary}</div>'
+        f'<tr><td style="padding-top:7px;color:{BODY};font-size:13.5px;'
+        f'{MSO_LH}line-height:1.62;font-family:{FONT};">{summary}</td></tr>'
         if summary else ""
     )
+    # Headline, source line and summary each get their own row: cell padding is
+    # the only vertical spacing Word reliably honours, where the div margins
+    # this used to rely on were simply dropped.
     return f"""<tr><td style="padding:13px 0 13px 14px;border-left:3px solid {color};{border}">
-      <div>
-        {tag}<a href="{link}" style="color:{INK};text-decoration:none;font-size:15px;
-          font-weight:700;line-height:1.4;font-family:{FONT};">{title}</a>
-      </div>
-      {_meta_line(article)}
-      {summary_html}
+      <table width="100%" cellpadding="0" cellspacing="0" border="0" style="{MSO_TABLE}">
+        <tr><td style="{MSO_LH}line-height:1.4;">
+          {tag}<a href="{link}" style="color:{INK};text-decoration:none;font-size:15px;
+            font-weight:700;line-height:1.4;font-family:{FONT};{MSO_LH}">{title}</a>
+        </td></tr>
+        <tr><td style="padding-top:4px;">{_meta_line(article)}</td></tr>
+        {summary_html}
+      </table>
     </td></tr>"""
 
 
@@ -169,10 +198,10 @@ def _rest_row(article, last):
     sep = '<span style="color:#c8cdd4;"> &nbsp;&middot;&nbsp; </span>'
     return f"""<tr><td style="padding:9px 0;{border}">
       <a href="{_esc_attr(article["link"])}" style="color:{INK};text-decoration:none;
-        font-size:13.5px;font-weight:600;line-height:1.4;font-family:{FONT};"
+        font-size:13.5px;font-weight:600;{MSO_LH}line-height:1.4;font-family:{FONT};"
         >{_esc(article["title"])}</a>
-      <div style="font-size:11.5px;color:{META};font-family:{FONT};margin-top:3px;"
-        >{sep.join(parts)}</div>
+      <div style="font-size:11.5px;color:{META};font-family:{FONT};{MSO_LH}
+        line-height:1.45;padding-top:3px;">{sep.join(parts)}</div>
     </td></tr>"""
 
 
@@ -212,7 +241,8 @@ def _lead_block(lead):
             text-transform:uppercase;letter-spacing:1.6px;margin-bottom:6px;">
             Today&#39;s Brief
           </div>
-          <div style="color:{INK};font-size:14.5px;line-height:1.62;font-family:{FONT};">
+          <div style="color:{INK};font-size:14.5px;{MSO_LH}line-height:1.62;
+            font-family:{FONT};">
             {_esc(lead)}
           </div>
         </td></tr>
@@ -251,12 +281,21 @@ def build_html_email(today, sections, lead=None, top_stories=None, count=None,
   <meta name="color-scheme" content="light">
   <title>CRE Daily Digest — {date_str}</title>
 </head>
-<body style="margin:0;padding:24px 12px;background-color:{PAGE};font-family:{FONT};">
-  <table width="100%" cellpadding="0" cellspacing="0" border="0">
-    <tr><td align="center">
+<body style="margin:0;padding:0;background-color:{PAGE};font-family:{FONT};">
+  <!-- bgcolor as well as CSS: some Outlook versions ignore a styled body -->
+  <table width="100%" cellpadding="0" cellspacing="0" border="0" bgcolor="{PAGE}"
+    style="{MSO_TABLE}background-color:{PAGE};">
+    <tr><td align="center" style="padding:24px 12px;">
+      <!--[if mso]>
+      <table role="presentation" width="{CARD_WIDTH}" cellpadding="0" cellspacing="0"
+        border="0" align="center"><tr><td>
+      <![endif]-->
+      <!-- Word ignores max-width, so without the fixed-width table above this
+           card stretched to the full window and every line ran long. Other
+           clients never see that table and keep the fluid max-width below. -->
       <table cellpadding="0" cellspacing="0" border="0"
-        style="width:100%;max-width:640px;background:#ffffff;border-radius:12px;
-        overflow:hidden;box-shadow:0 1px 3px rgba(13,27,62,0.12);">
+        style="{MSO_TABLE}width:100%;max-width:{CARD_WIDTH}px;background:#ffffff;
+        border-radius:12px;overflow:hidden;box-shadow:0 1px 3px rgba(13,27,62,0.12);">
 
         <!-- Masthead (navy→teal gradient) -->
         <tr><td style="{gradient}padding:22px 32px 20px;">
@@ -272,7 +311,7 @@ def build_html_email(today, sections, lead=None, top_stories=None, count=None,
               </td>
             </tr>
           </table>
-          <div style="margin-top:9px;color:#9fe0d4;font-size:10.5px;font-family:{FONT};
+          <div style="padding-top:9px;color:#9fe0d4;font-size:10.5px;font-family:{FONT};
             text-transform:uppercase;letter-spacing:1.5px;font-weight:600;">
             {count} stories{rest_label} &nbsp;&middot;&nbsp; {tagline}
           </div>
@@ -298,6 +337,7 @@ def build_html_email(today, sections, lead=None, top_stories=None, count=None,
         </td></tr>
 
       </table>
+      <!--[if mso]></td></tr></table><![endif]-->
     </td></tr>
   </table>
 </body>
