@@ -78,6 +78,13 @@ CONTENT_FARMS = {
     "msn.com", "msn ", "yahoo", "newsbreak", "patch.com",
     "zerohedge", "benzinga", "tipranks", "insider monkey",
     "briefs finance", "slow boring",
+    # Syndicators and press-release distributors. Not disreputable, but not
+    # reporting either — they restate someone else's announcement. Observed
+    # fronting stories in the digest, so they're routed to a journalistic
+    # alternate where one exists, and kept as-is where none does.
+    "tradingview", "marketbeat", "stocktwits", "24/7 wall st",
+    "business wire", "businesswire", "pr newswire", "prnewswire",
+    "globe newswire", "globenewswire", "accesswire",
 }
 
 _PUNCT = re.compile(r"[^\w\s.]+")
