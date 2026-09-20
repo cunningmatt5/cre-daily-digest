@@ -60,6 +60,29 @@ ARTICLES = [
 ]
 
 
+# "Best of the Rest": headline + link only, no summary, no sector grouping.
+# Included here so design review covers the real email — without it the preview
+# showed a digest that hasn't shipped since the section was added.
+REST = [
+    a("Manova Partners Acquires 1 MSF Logistics Facility in Spartanburg", "Industrial", 56,
+      "REBusiness", "Jun 14", ""),
+    a("Indian Project Financier's Data Center Loans Top $1.2 Billion", "Data Centers", 56,
+      "bloomberg.com", "Jun 14", "", paywall=True),
+    a("Decron Buys Miracle Mile Apartments For $114M", "Multifamily", 55,
+      "Bisnow", "Jun 14", ""),
+    a("Downtown Brooklyn Development Site Fetches $84M", "Multifamily", 54,
+      "ConnectCRE", "Jun 13", ""),
+    a("JLL Arranges $154.1M Financing for Six-Property Retail Portfolio", "Retail", 53,
+      "SCB", "Jun 13", ""),
+    a("Avison Young Arranges $115M in Agency Financing for Queens Apartments", "Multifamily", 52,
+      "REBusiness", "Jun 13", ""),
+]
+# One swapped story so the "originally X" attribution renders in review.
+ARTICLES[4]["original_source"] = "WSJ"
+ARTICLES[4]["source_short"] = "CBS News"
+ARTICLES[4]["paywalled"] = False
+
+
 def top_n(articles, n=5):
     return sorted(articles, key=lambda x: x["significance"], reverse=True)[:n]
 
@@ -71,7 +94,7 @@ lead = ("Blackstone headlined a busy session with a $3.2B Canadian REIT take-pri
 
 sections = group_by_sector(ARTICLES)
 html = build_html_email(date(2026, 6, 15), sections, lead=lead,
-                        top_stories=top_n(ARTICLES), count=len(ARTICLES))
+                        top_stories=top_n(ARTICLES), count=len(ARTICLES), rest=REST)
 
 out = Path("data/preview.html")
 out.parent.mkdir(exist_ok=True)

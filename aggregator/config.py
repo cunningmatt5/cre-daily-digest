@@ -394,8 +394,16 @@ SOURCES = [
 # Pull more per source (RSS feeds are freshest-first, so a higher cap = more
 # of today's news, not stale backfill).
 MAX_ARTICLES_PER_SOURCE = 10
-# Candidate-pool cap fed to the enrichment stage (post-filter).
-MAX_TOTAL_ARTICLES = 90
+# Ceiling on distinct stories carried out of the ranking stage. Applied AFTER
+# clustering, so it costs nothing to raise — the summarizer only ever sees the
+# top DISPLAY_MAX_STORIES, and Best of the Rest draws from what's left.
+#
+# It was 90, which bound on most runs (114, 104 and 119 clusters were all
+# truncated to exactly 90) and quietly starved Best of the Rest — one run
+# filled only 17 of its 20 slots because the pool had been cut upstream. Raised
+# to a level that shouldn't bind in normal operation, kept as a sanity guard
+# against a runaway clustering result rather than removed.
+MAX_TOTAL_ARTICLES = 150
 # Display cap per sector in the email (wide capture, curated display).
 MAX_PER_SECTOR = 6
 # Only display stories at/above this LLM significance (0–100). Keeps the email

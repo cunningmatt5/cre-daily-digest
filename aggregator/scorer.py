@@ -7,7 +7,7 @@ whether or not the LLM ran (just without the editor's lead and crisp summaries).
 """
 
 import re
-from datetime import datetime
+from datetime import datetime, timezone
 
 from .config import MAX_TOTAL_ARTICLES, SECTORS
 
@@ -133,7 +133,9 @@ def _recency_bonus(article) -> int:
     dt = article.get("pub_datetime")
     if not dt:
         return 0
-    age_days = (datetime.utcnow() - dt).total_seconds() / 86400
+    # Naive UTC, matching feedparser's dates. See main._is_too_old.
+    now = datetime.now(timezone.utc).replace(tzinfo=None)
+    age_days = (now - dt).total_seconds() / 86400
     if age_days <= 1:
         return 20
     if age_days <= 2:
@@ -209,6 +211,8 @@ def score_and_sort(articles):
         ranked.append(canonical)
 
     ranked.sort(key=lambda x: x["significance"], reverse=True)
+    if len(ranked) > MAX_TOTAL_ARTICLES:
+        print(f"Deterministic ranking capped: {len(ranked)} distinct -> {MAX_TOTAL_ARTICLES}")
     return ranked[:MAX_TOTAL_ARTICLES]
 
 

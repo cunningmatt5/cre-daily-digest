@@ -2,7 +2,7 @@ import json
 import os
 import re
 import sys
-from datetime import date, datetime, timedelta
+from datetime import date, datetime, timedelta, timezone
 from pathlib import Path
 from urllib.parse import urlparse
 
@@ -64,7 +64,10 @@ def _is_too_old(article) -> bool:
     dt = article.get("pub_datetime")
     if dt is None:
         return False
-    cutoff = datetime.utcnow() - timedelta(days=MAX_AGE_DAYS)
+    # feedparser yields naive UTC datetimes, so compare in the same shape.
+    # utcnow() is deprecated; now(timezone.utc) with the tzinfo stripped is the
+    # documented replacement that keeps this comparison valid.
+    cutoff = datetime.now(timezone.utc).replace(tzinfo=None) - timedelta(days=MAX_AGE_DAYS)
     return dt < cutoff
 
 
@@ -251,6 +254,25 @@ def main():
     articles = _apply("No-date filter    ", _has_no_date)
     articles = _apply("Age filter        ", _is_too_old,
                       lambda a: f"pub {a['pub_datetime'].strftime('%Y-%m-%d %H:%M') if a.get('pub_datetime') else 'no date'}")
+
+    # Collapse the same URL arriving from more than one source before anything
+    # downstream pays for it — CRE Daily's main and multifamily feeds overlap,
+    # and the wire queries restate each other. Measured at ~13 redundant copies
+    # per run. URL only: an identical headline from a *different* outlet is the
+    # syndication the clustering step exists to merge, and collapsing it here
+    # would pick a canonical without the model's judgement and lose
+    # `also_sources`. Same pattern as scorer.score_and_sort.
+    seen_links = set()
+    unique = []
+    for a in articles:
+        key = a["link"].rstrip("/")
+        if key not in seen_links:
+            seen_links.add(key)
+            unique.append(a)
+    if len(unique) < len(articles):
+        print(f"URL dedup         : {len(articles):3} → {len(unique):3}  "
+              f"({len(articles) - len(unique)} duplicate URLs across sources)")
+    articles = unique
 
     seen_urls = load_seen_urls()
     before = len(articles)

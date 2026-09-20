@@ -2,4 +2,7 @@ feedparser==6.0.11
 requests==2.32.3
 beautifulsoup4==4.12.3
 lxml==5.2.2
-anthropic>=0.69.0
+# Pinned exactly, like everything else. enrich.py depends on the structured
+# `output_config` API, so a major release could break the digest silently on a
+# morning run. Upgrading should be a deliberate act, verified with a dry run.
+anthropic==0.109.2
