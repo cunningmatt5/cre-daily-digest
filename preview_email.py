@@ -77,26 +77,34 @@ REST = [
     a("Avison Young Arranges $115M in Agency Financing for Queens Apartments", "Multifamily", 52,
       "REBusiness", "Jun 13", ""),
 ]
-# One swapped story so the "originally X" attribution renders in review.
-ARTICLES[4]["original_source"] = "WSJ"
-ARTICLES[4]["source_short"] = "CBS News"
-ARTICLES[4]["paywalled"] = False
 
 
-def top_n(articles, n=5):
-    return sorted(articles, key=lambda x: x["significance"], reverse=True)[:n]
+def main():
+    """Render the sample digest for design review."""
+    # One swapped story so the "originally X" attribution renders in review.
+    ARTICLES[4]["original_source"] = "WSJ"
+    ARTICLES[4]["source_short"] = "CBS News"
+    ARTICLES[4]["paywalled"] = False
 
 
-lead = ("Blackstone headlined a busy session with a $3.2B Canadian REIT take-private, while "
-        "AI capital kept flooding into data centers via a $10B KKR-Nvidia venture. Office "
-        "distress deepened — SF vacancy hit a record and Trepp pegged troubled office loans "
-        "above $52B — as the Fed's hold nudged lenders toward a Q3 thaw.")
+    def top_n(articles, n=5):
+        return sorted(articles, key=lambda x: x["significance"], reverse=True)[:n]
 
-sections = group_by_sector(ARTICLES)
-html = build_html_email(date(2026, 6, 15), sections, lead=lead,
-                        top_stories=top_n(ARTICLES), count=len(ARTICLES), rest=REST)
 
-out = Path("data/preview.html")
-out.parent.mkdir(exist_ok=True)
-out.write_text(html, encoding="utf-8")
-print(f"Wrote {out} ({len(html)} bytes) — open it in a browser.")
+    lead = ("Blackstone headlined a busy session with a $3.2B Canadian REIT take-private, while "
+            "AI capital kept flooding into data centers via a $10B KKR-Nvidia venture. Office "
+            "distress deepened — SF vacancy hit a record and Trepp pegged troubled office loans "
+            "above $52B — as the Fed's hold nudged lenders toward a Q3 thaw.")
+
+    sections = group_by_sector(ARTICLES)
+    html = build_html_email(date(2026, 6, 15), sections, lead=lead,
+                            top_stories=top_n(ARTICLES), count=len(ARTICLES), rest=REST)
+
+    out = Path("data/preview.html")
+    out.parent.mkdir(exist_ok=True)
+    out.write_text(html, encoding="utf-8")
+    print(f"Wrote {out} ({len(html)} bytes) — open it in a browser.")
+
+
+if __name__ == "__main__":
+    main()

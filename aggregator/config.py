@@ -1,15 +1,6 @@
 import os
 from urllib.parse import quote_plus
 
-# ── Tier colors (source chips) ───────────────────────────────────────────────
-# Tier 1 = Navy (#0d1b3e) — premium / highest authority
-# Tier 2 = Royal Blue (#1e40af) — core trade press + major brokers
-# Tier 3 = Forest Green (#1a5c2e) — sector-specific / associations
-
-NAVY  = "#0d1b3e"
-ROYAL = "#1e40af"
-GREEN = "#1a5c2e"
-
 
 def gnews(query: str, days=None) -> str:
     """Build a Google News RSS search URL for a query.
@@ -33,8 +24,6 @@ def gnews(query: str, days=None) -> str:
 # when an API key is present. Without it the pipeline falls back to the
 # deterministic scorer, so the digest always sends.
 LLM_MODEL = os.environ.get("DIGEST_MODEL", "claude-opus-4-8")
-LLM_EFFORT = os.environ.get("DIGEST_EFFORT", "high")  # low | medium | high | max
-LLM_ENABLED = bool(os.environ.get("ANTHROPIC_API_KEY"))
 
 # ── Sectors (display order + band color) ─────────────────────────────────────
 # The enrichment stage tags every story with exactly one of these labels.
@@ -87,8 +76,6 @@ SOURCES = [
         # Site is login-walled to scrape; Google News surfaces costar.com articles
         "url": gnews("site:costar.com", days=2),
         "method": "rss",
-        "tier_weight": 30,
-        "color": NAVY,
         "paywalled": True,
     },
     {
@@ -97,8 +84,6 @@ SOURCES = [
         # Bloomberg disabled native RSS; Google News RSS surfaces bloomberg.com CRE articles
         "url": gnews('site:bloomberg.com "real estate"', days=2),
         "method": "rss",
-        "tier_weight": 28,
-        "color": NAVY,
         "paywalled": True,
     },
     {
@@ -107,8 +92,6 @@ SOURCES = [
         # Fully paywalled to scrape; Google News surfaces greenstreetnews.com headlines
         "url": gnews("site:greenstreetnews.com", days=3),
         "method": "rss",
-        "tier_weight": 28,
-        "color": NAVY,
         "paywalled": True,
     },
     # NOTE: CBRE Research and JLL Research were removed 2026-09-19. Their
@@ -126,24 +109,18 @@ SOURCES = [
         # RSS returns 403 and homepage scrape is brittle; Google News proxy
         "url": gnews("site:globest.com", days=2),
         "method": "rss",
-        "tier_weight": 20,
-        "color": ROYAL,
     },
     {
         "name": "Commercial Observer",
         "short": "Comm Obs",
         "url": "https://commercialobserver.com/feed/",
         "method": "rss",
-        "tier_weight": 20,
-        "color": ROYAL,
     },
     {
         "name": "Bisnow",
         "short": "Bisnow",
         "url": "https://www.bisnow.com/rss",
         "method": "rss",
-        "tier_weight": 18,
-        "color": ROYAL,
     },
     {
         "name": "The Real Deal",
@@ -152,8 +129,6 @@ SOURCES = [
         # Google News surfaces therealdeal.com articles with real publish dates.
         "url": gnews("site:therealdeal.com", days=2),
         "method": "rss",
-        "tier_weight": 18,
-        "color": ROYAL,
     },
     {
         "name": "Trepp",
@@ -162,16 +137,12 @@ SOURCES = [
         # scraping the HTML yielded no dates, so every item was being filtered out.
         "url": "https://www.trepp.com/trepptalk/rss.xml",
         "method": "rss",
-        "tier_weight": 18,
-        "color": ROYAL,
     },
     {
         "name": "PERE",
         "short": "PERE",
         "url": gnews("site:perenews.com", days=3),
         "method": "rss",
-        "tier_weight": 16,
-        "color": ROYAL,
         "paywalled": True,
     },
     {
@@ -180,8 +151,6 @@ SOURCES = [
         # /feed/ returns empty; /briefs/feed/ is the active article feed
         "url": "https://www.credaily.com/briefs/feed/",
         "method": "rss",
-        "tier_weight": 15,
-        "color": ROYAL,
     },
     # NOTE: Marcus & Millichap removed 2026-09-19 — same undated-source problem
     # as CBRE/JLL above, and its listing page yielded only a nav link anyway.
@@ -191,16 +160,12 @@ SOURCES = [
         "short": "CRE MF",
         "url": "https://www.credaily.com/sectors/multifamily/feed",
         "method": "rss",
-        "tier_weight": 12,
-        "color": GREEN,
     },
     {
         "name": "Connect CRE",
         "short": "ConnectCRE",
         "url": "https://www.connectcre.com/feed/",
         "method": "rss",
-        "tier_weight": 10,
-        "color": GREEN,
     },
     {
         "name": "Lodging Magazine",
@@ -208,16 +173,12 @@ SOURCES = [
         # Replaces Hotel News Now (absorbed by CoStar in 2021)
         "url": "https://lodgingmagazine.com/feed/",
         "method": "rss",
-        "tier_weight": 10,
-        "color": GREEN,
     },
     {
         "name": "Shopping Center Business",
         "short": "SCB",
         "url": "https://www.shoppingcenterbusiness.com/feed/",
         "method": "rss",
-        "tier_weight": 10,
-        "color": GREEN,
     },
     # NOTE: NMHC removed 2026-09-19 — undated, no feed, and a `site:nmhc.org`
     # Google News proxy returns nothing at all. Multifamily coverage is carried
@@ -227,8 +188,6 @@ SOURCES = [
         "short": "Nareit",
         "url": "https://www.reit.com/news/rss.xml",
         "method": "rss",
-        "tier_weight": 10,
-        "color": GREEN,
     },
     {
         "name": "Data Center Dynamics",
@@ -236,8 +195,6 @@ SOURCES = [
         # Data-center coverage — a fast-growing CRE sector underrepresented above
         "url": "https://www.datacenterdynamics.com/rss/",
         "method": "rss",
-        "tier_weight": 10,
-        "color": GREEN,
     },
     # ── Added 2026-09-19 after a source audit ───────────────────────────
     # Only 6 of the previous 22 sources yielded article text: 11 were Google
@@ -253,8 +210,6 @@ SOURCES = [
         # every candidate tested, spanning all sectors.
         "url": "https://rebusinessonline.com/feed/",
         "method": "rss",
-        "tier_weight": 16,
-        "color": ROYAL,
     },
     {
         "name": "Scotsman Guide",
@@ -263,8 +218,6 @@ SOURCES = [
         # chars of content:encoded per item).
         "url": "https://www.scotsmanguide.com/feed/",
         "method": "rss",
-        "tier_weight": 15,
-        "color": ROYAL,
     },
     {
         "name": "Propmodo",
@@ -272,24 +225,18 @@ SOURCES = [
         # CRE strategy and technology; long-form, ~3.9k chars per item.
         "url": "https://propmodo.com/feed/",
         "method": "rss",
-        "tier_weight": 14,
-        "color": ROYAL,
     },
     {
         "name": "Hotel Business",
         "short": "HotelBiz",
         "url": "https://hotelbusiness.com/feed/",
         "method": "rss",
-        "tier_weight": 10,
-        "color": GREEN,
     },
     {
         "name": "Yield PRO",
         "short": "YieldPRO",
         "url": "https://yieldpro.com/feed/",
         "method": "rss",
-        "tier_weight": 10,
-        "color": GREEN,
     },
     {
         "name": "Senior Housing News",
@@ -298,8 +245,6 @@ SOURCES = [
         # also carries the most text per item of anything tested (~6.2k chars).
         "url": "https://seniorhousingnews.com/feed/",
         "method": "rss",
-        "tier_weight": 10,
-        "color": GREEN,
     },
     {
         "name": "Inside Self-Storage",
@@ -307,16 +252,12 @@ SOURCES = [
         # Self storage had no coverage at all; stories land under "Other".
         "url": "https://www.insideselfstorage.com/rss.xml",
         "method": "rss",
-        "tier_weight": 9,
-        "color": GREEN,
     },
     {
         "name": "Construction Dive",
         "short": "ConstrDive",
         "url": "https://www.constructiondive.com/feeds/news/",
         "method": "rss",
-        "tier_weight": 10,
-        "color": GREEN,
     },
     {
         "name": "Retail Dive",
@@ -324,8 +265,6 @@ SOURCES = [
         # Retailer bankruptcies and store-fleet moves drive retail CRE.
         "url": "https://www.retaildive.com/feeds/news/",
         "method": "rss",
-        "tier_weight": 9,
-        "color": GREEN,
     },
     {
         "name": "The DI Wire",
@@ -338,8 +277,6 @@ SOURCES = [
         # its Friday stories were 3 days old by Monday and filtered entirely.
         "url": "https://thediwire.com/feed/",
         "method": "rss",
-        "tier_weight": 12,
-        "color": GREEN,
     },
     # ── Broad discovery (Google News topic queries, time-restricted) ─────
     # The recall engine: these cast a wide, fresh net across ALL outlets —
@@ -351,8 +288,6 @@ SOURCES = [
         "short": "Wire",
         "url": gnews("commercial real estate", days=1),
         "method": "rss",
-        "tier_weight": 12,
-        "color": GREEN,
     },
     {
         "name": "CRE Deals & Capital",
@@ -363,8 +298,6 @@ SOURCES = [
             days=2,
         ),
         "method": "rss",
-        "tier_weight": 12,
-        "color": GREEN,
     },
     {
         "name": "CRE Distress & Credit",
@@ -375,8 +308,6 @@ SOURCES = [
             days=2,
         ),
         "method": "rss",
-        "tier_weight": 12,
-        "color": GREEN,
     },
     {
         "name": "CRE by Sector",
@@ -388,8 +319,6 @@ SOURCES = [
             days=2,
         ),
         "method": "rss",
-        "tier_weight": 12,
-        "color": GREEN,
     },
     {
         "name": "CRE Major Players",
@@ -400,8 +329,6 @@ SOURCES = [
             days=2,
         ),
         "method": "rss",
-        "tier_weight": 12,
-        "color": GREEN,
     },
     {
         "name": "RE Private Equity",
@@ -421,8 +348,6 @@ SOURCES = [
             days=4,
         ),
         "method": "rss",
-        "tier_weight": 12,
-        "color": GREEN,
     },
 ]
 

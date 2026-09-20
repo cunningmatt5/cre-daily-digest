@@ -40,6 +40,15 @@ def is_google_link(link: str) -> bool:
     return bool(link) and "news.google.com" in link
 
 
+def is_direct_link(link: str) -> bool:
+    """True when the URL points at a publisher page we can actually fetch.
+
+    The single definition of this predicate. It lived in both extract.py and
+    publicize.py, with ``is_google_link`` as a third, inverted copy.
+    """
+    return bool(link) and not is_google_link(link)
+
+
 def _rpc_payload(article_id: str, timestamp: str, signature: str) -> str:
     # Shape mirrors what the Google News splash page sends for a link click.
     inner = [

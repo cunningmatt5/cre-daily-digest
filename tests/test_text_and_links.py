@@ -37,8 +37,12 @@ def test_falls_back_to_thin_when_nothing_is_fetchable(article):
 
 
 def test_google_links_are_not_fetchable():
-    assert X._is_direct("https://bisnow.com/story") is True
-    assert X._is_direct("https://news.google.com/rss/articles/Q") is False
+    """One shared definition — it used to exist three times, twice as
+    `_is_direct` and once inverted as `is_google_link`."""
+    assert R.is_direct_link("https://bisnow.com/story") is True
+    assert R.is_direct_link("https://news.google.com/rss/articles/Q") is False
+    assert R.is_direct_link("") is False
+    assert R.is_direct_link("https://news.google.com/x") is not R.is_google_link("https://news.google.com/x")
 
 
 def test_gather_sets_keys_on_every_article(article):
