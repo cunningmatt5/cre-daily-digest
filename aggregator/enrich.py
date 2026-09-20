@@ -264,10 +264,15 @@ def enrich(articles):
         ranked.append(a)
 
     ranked.sort(key=lambda x: x["significance"], reverse=True)
+    # Report the real cluster count, not the post-cap one. Printing len(ranked)
+    # after truncating made the log read as though clustering had produced
+    # exactly the cap — three runs in a row "produced" 90 distinct stories.
+    distinct = len(ranked)
     ranked = ranked[:MAX_TOTAL_ARTICLES]
+    capped = f" (capped to {MAX_TOTAL_ARTICLES})" if distinct > MAX_TOTAL_ARTICLES else ""
     kept_articles = sum(len(m) for m in clusters.values())
     print(f"Enrichment: {len(enriched)} scored -> {len(dropped_titles)} dropped (non-news), "
-          f"{kept_articles} kept -> {len(ranked)} distinct stories after clustering.")
+          f"{kept_articles} kept -> {distinct} distinct stories after clustering{capped}.")
     for t in dropped_titles[:25]:
         print(f"  DROPPED(keep=false) {t[:90]!r}")
     return lead, ranked

@@ -6,7 +6,7 @@ them (which is exactly what happened before PR #11).
 """
 
 import json
-from datetime import date, datetime, timedelta
+from datetime import date, datetime, timedelta, timezone
 
 import pytest
 
@@ -44,9 +44,14 @@ def test_short_titles_are_rejected(article):
                                          link="https://ex.com/a-long-enough-slug-here-ok"))
 
 
+def _naive_utcnow():
+    """Naive UTC, matching what feedparser produces for pub_datetime."""
+    return datetime.now(timezone.utc).replace(tzinfo=None)
+
+
 def test_age_filter_uses_max_age_days(article):
-    fresh = datetime.utcnow() - timedelta(hours=6)
-    stale = datetime.utcnow() - timedelta(days=M.MAX_AGE_DAYS + 1)
+    fresh = _naive_utcnow() - timedelta(hours=6)
+    stale = _naive_utcnow() - timedelta(days=M.MAX_AGE_DAYS + 1)
     assert M._is_too_old(article(pub_datetime=fresh)) is False
     assert M._is_too_old(article(pub_datetime=stale)) is True
     # No date is handled by its own filter, not this one.
@@ -55,7 +60,7 @@ def test_age_filter_uses_max_age_days(article):
 
 def test_no_date_filter(article):
     assert M._has_no_date(article(pub_datetime=None)) is True
-    assert M._has_no_date(article(pub_datetime=datetime.utcnow())) is False
+    assert M._has_no_date(article(pub_datetime=_naive_utcnow())) is False
 
 
 # ── domain-based access refinement ───────────────────────────────────────────
